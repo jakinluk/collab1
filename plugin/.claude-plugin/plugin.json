@@ -1,0 +1,21 @@
+{
+  "name": "h1",
+  "displayName": "HackathonOne",
+  "version": "0.3.0",
+  "description": "Run a team hackathon with Claude Code: book tickets, build autonomously, raise blockers against an editable rules table, vote, share skills, all on a live shared board",
+  "author": {
+    "name": "Łukasz Kiedrowski",
+    "url": "https://github.com/jakinluk"
+  },
+  "keywords": [
+    "hackathon",
+    "orchestration",
+    "kanban",
+    "autopilot"
+  ],
+  "experimental": {
+    "monitors": "./monitors/monitors.json"
+  },
+  "homepage": "https://github.com/jakinluk/collab1",
+  "repository": "https://github.com/jakinluk/collab1"
+}

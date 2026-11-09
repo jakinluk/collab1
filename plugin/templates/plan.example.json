@@ -1,0 +1,31 @@
+{
+  "tickets": [
+    {
+      "id": "contracts",
+      "repo": "platform",
+      "title": "NoteDraft + SyncBatch contracts and stubs",
+      "description": "Zod schemas in libs/shared/api-interfaces, stub handler returning fixtures, route registration.",
+      "type": "contract",
+      "lanes": ["contract"],
+      "deps": [],
+      "pathsOwned": ["libs/shared/api-interfaces/src/note-sync/**", "services/note/src/handlers/sync-batch/**"],
+      "acceptance": [{ "cmd": "npm run type:check", "criterion": "Workspace type-checks with the new contracts and stubs" }],
+      "priority": 1,
+      "wave": 1
+    },
+    {
+      "id": "queue",
+      "repo": "platform",
+      "title": "Offline queue on device",
+      "description": "Persist captured notes and photos locally and queue them for sync.",
+      "type": "slice",
+      "lanes": ["mobile"],
+      "deps": ["contracts"],
+      "pathsOwned": ["apps/mobile/src/features/offline-queue/**"],
+      "acceptance": [{ "cmd": "npx nx run mobile:unit --testPathPattern=offline-queue", "criterion": "Queue survives app restart in tests" }],
+      "priority": 2,
+      "wave": 2,
+      "dodRefs": [0]
+    }
+  ]
+}

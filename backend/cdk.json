@@ -1,0 +1,9 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "context": {
+    "eventEndsAt": "2026-12-31T23:59:59Z",
+    "domainPrefix": "h1-hackathon",
+    "removalPolicy": "destroy",
+    "dataTtlDays": "21"
+  }
+}

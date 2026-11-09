@@ -1,0 +1,12 @@
+{
+  "name": "h1-e2e",
+  "private": true,
+  "description": "End-to-end runs of the CLI and the board against the local hub",
+  "scripts": {
+    "cli": "bash cli-e2e.sh",
+    "board": "node board-e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

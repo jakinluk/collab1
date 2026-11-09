@@ -1,0 +1,29 @@
+{
+  "id": "offline-capture",
+  "name": "Offline note capture",
+  "description": "A field tech captures a note with photos on iOS while offline, and it syncs to the web report when the phone is back online.",
+  "lanes": ["contract", "mobile", "api", "web", "e2e"],
+  "tags": ["mobile", "offline"],
+  "demo": { "url": "https://hack-offline-capture.example.com", "stage": "hack-int", "notes": "Reset the demo inspection data before each run" },
+  "links": [
+    { "label": "Slack #hack-offline-capture", "url": "https://example.slack.com/archives/C0000000" },
+    { "label": "Designs", "url": "https://www.figma.com/file/example" }
+  ],
+  "repos": [
+    {
+      "name": "platform",
+      "url": "git@github.com:acme/platform.git",
+      "preset": "nx-monorepo",
+      "baseBranch": "main",
+      "integrationBranch": "hack/offline-capture"
+    },
+    {
+      "name": "field-app",
+      "url": "https://github.com/acme/field-app",
+      "preset": "expo-app",
+      "baseBranch": "main",
+      "integrationBranch": "hack/offline-capture",
+      "contractPaths": ["src/api/types/**"]
+    }
+  ]
+}

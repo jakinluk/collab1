@@ -1,0 +1,55 @@
+{
+  "nx-monorepo": {
+    "description": "Nx TypeScript monorepo: shared contracts in libs/shared, type-check and unit tests instead of builds",
+    "baseBranch": "main",
+    "hotPaths": ["package.json", "package-lock.json", "nx.json", "**/project.json", "tsconfig.base.json", ".github/**", "**/serverless*.yml"],
+    "contractPaths": ["libs/shared/**"],
+    "setup": ["npm ci"],
+    "verify": [
+      { "name": "typecheck", "cmd": "npm run type:check" },
+      { "name": "lint", "cmd": "npx nx affected -t lint" },
+      { "name": "unit", "cmd": "npx nx affected -t unit" }
+    ],
+    "instructionsPath": "CLAUDE.md",
+    "laneMap": [
+      { "glob": "apps/mobile/**", "lane": "mobile" },
+      { "glob": "apps/web/**", "lane": "web" },
+      { "glob": "services/**", "lane": "api" },
+      { "glob": "libs/shared/**", "lane": "contract" },
+      { "glob": "e2e-tests/**", "lane": "e2e" }
+    ],
+    "prLabels": ["hackathon"],
+    "notes": "Never run builds (npm run build, nx build, affected:build): use type:check and unit tests. Contracts in libs/shared are owned by contract tickets only."
+  },
+  "node-app": {
+    "description": "Single Node.js / TypeScript application or service",
+    "baseBranch": "main",
+    "hotPaths": ["package.json", "package-lock.json", "tsconfig.json", ".github/**"],
+    "contractPaths": ["src/contracts/**", "src/types/shared/**"],
+    "setup": ["npm ci"],
+    "verify": [
+      { "name": "typecheck", "cmd": "npx tsc --noEmit" },
+      { "name": "lint", "cmd": "npm run lint --if-present" },
+      { "name": "test", "cmd": "npm test" }
+    ],
+    "instructionsPath": "CLAUDE.md",
+    "laneMap": [],
+    "prLabels": ["hackathon"]
+  },
+  "expo-app": {
+    "description": "Expo / React Native mobile app",
+    "baseBranch": "main",
+    "hotPaths": ["package.json", "package-lock.json", "app.json", "app.config.ts", "app.config.js", "eas.json", "babel.config.js", "metro.config.js", ".github/**"],
+    "contractPaths": ["src/api/types/**"],
+    "setup": ["npm ci"],
+    "verify": [
+      { "name": "typecheck", "cmd": "npx tsc --noEmit" },
+      { "name": "lint", "cmd": "npx expo lint" },
+      { "name": "test", "cmd": "npm test -- --watchAll=false" }
+    ],
+    "instructionsPath": "CLAUDE.md",
+    "laneMap": [{ "glob": "**", "lane": "mobile" }],
+    "prLabels": ["hackathon", "mobile"],
+    "notes": "Run the app on the iOS Simulator with npx expo run:ios; check shared h1-- skills for the team's working recipe first."
+  }
+}

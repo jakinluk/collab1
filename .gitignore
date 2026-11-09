@@ -1,0 +1,7 @@
+node_modules/
+cdk.out/
+.DS_Store
+board/config.json
+e2e/screenshots/
+backend/local-state*.json
+_to_delete/

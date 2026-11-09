@@ -1,0 +1,17 @@
+{
+  "name": "hackathonone",
+  "owner": {
+    "name": "Łukasz Kiedrowski",
+    "url": "https://github.com/jakinluk"
+  },
+  "metadata": {
+    "description": "HackathonOne: run a hackathon where Claude Code does the building"
+  },
+  "plugins": [
+    {
+      "name": "h1",
+      "source": "./plugin",
+      "description": "HackathonOne: shared board, tickets, blocker rules, votes and skill sharing for a team hackathon run by Claude Code"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "statement": "A field tech captures a note with photos on iOS while offline, and it syncs to the web report once the phone is back online.",
+  "definitionOfDone": [
+    "Capture a note with a photo in airplane mode",
+    "Queued notes sync automatically on reconnect",
+    "Synced note shows up in the web report without a reload"
+  ],
+  "demoScript": "1. Airplane mode on. 2. Capture a note with two photos. 3. Airplane mode off. 4. Open the web report: the note is there.",
+  "nonGoals": ["Android", "Conflict resolution UI"]
+}

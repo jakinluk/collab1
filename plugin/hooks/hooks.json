@@ -1,0 +1,11 @@
+{
+  "description": "HackathonOne: session context, file-ownership guard, heartbeats, autopilot continuation",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/h1 hook session-start", "timeout": 10 }] }],
+    "PreToolUse": [{ "matcher": "Edit|Write|NotebookEdit", "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/h1 hook guard", "timeout": 5 }] }],
+    "PostToolUse": [{ "matcher": "Bash|Edit|Write", "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/h1 hook heartbeat", "timeout": 5 }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/h1 hook needs-input", "timeout": 5 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/h1 hook autopilot-stop", "timeout": 10 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/h1 hook session-end", "timeout": 10 }] }]
+  }
+}
