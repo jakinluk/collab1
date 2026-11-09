@@ -6,6 +6,7 @@ import type {
   EnvelopeInput,
   Escalation,
   Goal,
+  HubMode,
   HumanAction,
   KnowledgeItem,
   Project,
@@ -39,6 +40,7 @@ import {
   statusSchema,
   ticketInputSchema,
   type TicketInput,
+  rotateSchema,
   toolBugSchema,
   voteSchema,
 } from '../shared/schemas';
@@ -78,19 +80,30 @@ import { K, type JoinRecord, type LockRecord, type TokenRecord } from '../adapte
 import { chunk, Store, type TxItem, type Versioned } from '../adapters/store';
 import { MAX_SKILL_BYTES, SkillFiles } from '../adapters/s3';
 import type { RuntimeConfig } from '../adapters/config';
+import { assignDodIds, changedDod, CLAIMABLE_EPIC_STATES, defaultEpic, dodOf } from '../core/ongoing';
+import { agentActions } from '../core/gates';
+import { OngoingMode } from './ongoing';
 
 const MIN = 60_000;
+const DAY = 24 * 60 * MIN;
+const ROTATION_GRACE_MS = 10 * MIN;
 export const DEFAULT_SETTINGS: Settings = { leaseTtlSec: 900, defaultContestMin: 5, rulesVersion: 1 };
 const OPEN_ESC_STATUSES = ['open', 'resolved_pending_contest', 'contested'] as const;
 const SESSION_STATE_TEXT: Record<string, string> = { working: 'is working', needs_input: 'is waiting for a human', idle: 'is idle', ended: 'ended' };
 const PARKABLE: readonly string[] = ['booked', 'in_progress', 'blocked', 'ready', 'review'];
+const REFS_REQUIRED: readonly string[] = ['slice', 'contract', 'glue', 'test'];
 
 export interface HubDeps {
   store: Store;
   files: SkillFiles;
   pepper: () => Promise<string>;
   runtime: () => Promise<RuntimeConfig>;
-  eventEndsAt: number;
+  /** event: a hackathon with an end date. ongoing: day-to-day work, nothing the team works on expires. */
+  mode?: HubMode;
+  /** End of the event; agent tokens expire then. Required in event mode. */
+  eventEndsAt?: number;
+  /** Agent token lifetime in ongoing mode. */
+  tokenTtlDays?: number;
   now?: () => number;
   /** Default git URL of the CollabOne repo for the fix queue; the hub setting overrides it. */
   toolRepoUrl?: string;
@@ -118,19 +131,34 @@ const requireHuman = (actor: Actor): void => {
 };
 
 export class Hub {
-  private readonly store: Store;
+  readonly store: Store;
   private readonly files: SkillFiles;
-  private readonly now: () => number;
+  readonly now: () => number;
+  readonly mode: HubMode;
+  readonly ongoing: OngoingMode;
 
   private releaseCache?: { at: number; value: Release | undefined };
 
-  constructor(private readonly deps: HubDeps) {
+  constructor(readonly deps: HubDeps) {
     this.store = deps.store;
     this.files = deps.files;
     this.now = deps.now ?? Date.now;
+    this.mode = deps.mode ?? 'event';
+    if (this.mode === 'event' && deps.eventEndsAt === undefined) throw new Error('event mode needs eventEndsAt');
+    this.ongoing = new OngoingMode(this);
   }
 
-  private ev(actor: Actor | 'system', e: Omit<Ev, 'from' | 'fromKind'>): EnvelopeInput {
+  /** When a new agent or worker token expires. */
+  tokenExpiry(): number {
+    if (this.mode === 'ongoing') return this.now() + (this.deps.tokenTtlDays ?? 30) * DAY;
+    return this.deps.eventEndsAt as number;
+  }
+
+  branchPrefix(settings: Settings): string {
+    return settings.branchPrefix ?? (this.mode === 'ongoing' ? 'c1/' : 'hack/');
+  }
+
+  ev(actor: Actor | 'system', e: Omit<Ev, 'from' | 'fromKind'>): EnvelopeInput {
     return actor === 'system'
       ? envelope({ ...e, from: 'system', fromKind: 'system' })
       : envelope({ ...e, from: actor.workerId ? `${actor.seatId}/${actor.workerId}` : actor.seatId, fromKind: actor.kind });
@@ -273,7 +301,7 @@ export class Hub {
       kind: 'agent',
       machine: input.machine,
       createdAt: this.now(),
-      expiresAt: this.deps.eventEndsAt,
+      expiresAt: this.tokenExpiry(),
       revoked: false,
     };
     await this.store.commit(
@@ -325,6 +353,35 @@ export class Hub {
     );
   }
 
+  /** Swaps the caller's token for a new one; the old one keeps working for a short grace period. */
+  async rotateToken(actor: Actor, body: unknown): Promise<{ token: string; tokenId: string; expiresAt: number; replaced: string }> {
+    const { token: current } = parse(rotateSchema, body);
+    const pepper = await this.deps.pepper();
+    const old = await this.store.get<StoredToken>(K.tokenPk(hashSecret(pepper, current)));
+    if (!old || old.value.revoked || old.value.expiresAt < this.now() || old.value.seatId !== actor.seatId)
+      fail('forbidden', 'pass the token this Mac is using now; it must be valid and belong to your seat');
+    const prev = (old as Versioned<StoredToken>).value;
+    const token = generateAgentToken();
+    const hash = hashSecret(pepper, token);
+    const record: StoredToken = {
+      hash,
+      tokenId: generateTokenId(),
+      seatId: prev.seatId,
+      kind: prev.kind,
+      ...(prev.workerId ? { workerId: prev.workerId } : {}),
+      ...(prev.machine ? { machine: prev.machine } : {}),
+      createdAt: this.now(),
+      expiresAt: this.tokenExpiry(),
+      revoked: false,
+    };
+    const graceEnd = Math.min(prev.expiresAt, this.now() + ROTATION_GRACE_MS);
+    await this.store.commit(
+      [this.store.put(K.token(prev.hash, prev.seatId, prev.tokenId), { ...prev, expiresAt: graceEnd, replacedBy: record.tokenId }, (old as Versioned<StoredToken>).v), this.store.putNew(K.token(hash, record.seatId, record.tokenId), record)],
+      [this.ev(actor, { type: 'seat.token_rotated', summary: `${actor.seatId} rotated ${prev.tokenId} → ${record.tokenId}${prev.machine ? ` (${prev.machine})` : ''}`, to: actor.seatId })],
+    );
+    return { token, tokenId: record.tokenId, expiresAt: record.expiresAt, replaced: prev.tokenId };
+  }
+
   private async createWorkerToken(actor: Actor, workerId: string): Promise<{ token: string; tokenId: string; workerId: string }> {
     const token = generateAgentToken();
     const hash = hashSecret(await this.deps.pepper(), token);
@@ -335,7 +392,7 @@ export class Hub {
       kind: 'worker',
       workerId,
       createdAt: this.now(),
-      expiresAt: this.deps.eventEndsAt,
+      expiresAt: this.tokenExpiry(),
       revoked: false,
     };
     await this.store.commit([this.store.putNew(K.token(hash, actor.seatId, record.tokenId), record)]);
@@ -350,7 +407,7 @@ export class Hub {
     const { version, rules } = await this.rules(projectId);
     const project = projectId ? (await this.store.get<Project>(K.project(projectId)))?.value : undefined;
     const repos = project ? normalizeProject(project).repos : [];
-    return { seat: seat.value, actor, projectId, repos, rules: { version, digest: rulesDigest(rules, version) }, release: (await this.currentRelease()) ?? null };
+    return { seat: seat.value, actor, mode: this.mode, projectId, projects: seat.value.projects, repos, rules: { version, digest: rulesDigest(rules, version) }, release: (await this.currentRelease()) ?? null };
   }
 
   async patchMe(actor: Actor, body: unknown): Promise<Seat> {
@@ -370,6 +427,12 @@ export class Hub {
       next.pinned = true;
       events.push(this.ev(actor, { type: 'seat.pinned', summary: `${actor.seatId} pinned to ${p.pinProject}`, projectId: p.pinProject }));
     }
+    if (p.follow?.length) {
+      for (const pid of p.follow) await this.requireProject(pid);
+      next.projects = [...next.projects, ...p.follow.filter((x) => !next.projects.includes(x))];
+      events.push(this.ev(actor, { type: 'seat.following', summary: `${actor.seatId} follows ${p.follow.join(', ')}` }));
+    }
+    if (p.unfollow?.length) next.projects = next.projects.filter((x) => !p.unfollow?.includes(x));
     if (p.workMode && p.workMode !== seat.value.workMode)
       events.push(this.ev(actor, { type: 'seat.mode', summary: `${actor.seatId} switched to ${p.workMode}` }));
     await this.store.commit([this.store.put(K.seat(seat.value.id), next, seat.v)], events);
@@ -415,7 +478,7 @@ export class Hub {
     if (t.booking?.seatId !== actor.seatId) fail('forbidden', `${t.id} is booked by ${t.booking?.seatId ?? 'nobody'}, not ${actor.seatId}`);
   }
 
-  private lockOps(t: Ticket, op: 'put' | 'delete'): TxItem[] {
+  lockOps(t: Ticket, op: 'put' | 'delete'): TxItem[] {
     return lockPrefixes(t.pathsOwned).map((prefix) => {
       const keys = K.lock(t.projectId, t.repo, prefix);
       if (op === 'delete') return this.store.delete(keys);
@@ -424,7 +487,7 @@ export class Hub {
     });
   }
 
-  private log(t: Ticket, actor: Actor | 'system', text: string): Ticket['log'] {
+  log(t: Ticket, actor: Actor | 'system', text: string): Ticket['log'] {
     const entry = actor === 'system' ? { ts: this.now(), who: 'system', kind: 'agent' as const, text } : { ts: this.now(), who: actor.seatId, kind: actor.kind, text };
     return [...t.log, entry].slice(-50);
   }
@@ -433,7 +496,8 @@ export class Hub {
     const t = (await this.requireTicket(id)).value;
     const project = (await this.store.get<Project>(K.project(t.projectId)))?.value;
     const repo = project ? normalizeProject(project).repos.find((r) => r.name === t.repo) ?? null : null;
-    return { ticket: t, card: renderCard(t, repo ?? undefined), repo };
+    const brief = t.refs?.length ? await this.ongoing.brief(t) : '';
+    return { ticket: t, card: `${renderCard(t, repo ?? undefined)}${brief ? `\n\n${brief}` : ''}`, repo };
   }
 
   async listTickets(projectId: string, status?: string, ready?: boolean): Promise<Ticket[]> {
@@ -456,11 +520,15 @@ export class Hub {
     }
     const existing = await this.tickets(projectId);
     for (const d of input.deps) if (!existing.some((t) => t.id === d)) fail('invalid', `unknown dependency ${d}`);
+    if (this.mode === 'ongoing' && actor.kind === 'agent' && REFS_REQUIRED.includes(input.type) && !input.refs?.length && projectId !== TOOL_PROJECT_ID)
+      fail('invalid', `cite what this ticket implements in refs (dod:d1, input:I1#anchor or decision:R1): change requests find affected tickets through them`);
+    if (input.refs?.length) await this.ongoing.assertRefs(projectId, input.refs);
+    if (input.milestone && !project.value.epic?.milestones.some((m) => m.id === input.milestone)) fail('invalid', `unknown milestone ${input.milestone}`);
     const [n] = await this.store.nextIds('ticket');
     const id = prefixedId('T', n);
     const status: Ticket['status'] =
       actor.kind === 'agent' ? (input.dodRefs && input.dodRefs.length > 0 ? 'planned' : 'ready') : (input.status ?? 'ready');
-    const ticket = this.ticketFromInput(id, projectId, input, actor, status);
+    const ticket = { ...this.ticketFromInput(id, projectId, input, actor, status), ...(this.mode === 'ongoing' ? { scopeVersion: project.value.goalVersion } : {}) };
     await this.store.commit(
       [this.store.putNew(K.ticket(ticket), ticket)],
       [this.ev(actor, { type: 'ticket.added', summary: `${id} added (${status}): ${ticket.title}`, projectId, ticketId: id, data: { status, lanes: ticket.lanes } })],
@@ -468,7 +536,7 @@ export class Hub {
     return ticket;
   }
 
-  private ticketFromInput(id: string, projectId: string, input: TicketInput, actor: Actor, status: Ticket['status'], deps = input.deps): Ticket {
+  ticketFromInput(id: string, projectId: string, input: TicketInput, actor: Actor, status: Ticket['status'], deps = input.deps): Ticket {
     return {
       id,
       projectId,
@@ -488,6 +556,8 @@ export class Hub {
       createdBy: actor.seatId,
       createdByAgent: actor.kind === 'agent',
       dodRefs: input.dodRefs,
+      ...(input.refs?.length ? { refs: input.refs } : {}),
+      ...(input.milestone ? { milestone: input.milestone } : {}),
       log: [{ ts: this.now(), who: actor.seatId, kind: actor.kind, text: 'created' }],
       updatedAt: this.now(),
       version: 1,
@@ -503,6 +573,8 @@ export class Hub {
       this.settings(),
       this.store.queryGsi<LockRecord>(`PROJECT#${t.projectId}#LOCKS`, `${t.repo}#`),
     ]);
+    const epic = project.value.epic;
+    if (epic && !CLAIMABLE_EPIC_STATES.includes(epic.state)) throw new DomainError('not_ready', `${t.id}: epic ${project.value.id} is ${epic.state}`);
     for (const prefix of lockPrefixes(t.pathsOwned)) {
       const clash = locks.find((l) => l.value.repo === t.repo && l.value.ticketId !== t.id && prefixesOverlap(l.value.prefix, prefix));
       if (clash) throw new DomainError('path_conflict', `${t.id}: ${prefix || '(repo root)'} is locked by ${clash.value.ticketId}`, { conflictsWith: clash.value.ticketId });
@@ -513,15 +585,16 @@ export class Hub {
       ...t,
       status,
       booking: { seatId: actor.seatId, workerId, sessionId: opts.sessionId, leaseExpiresAt: this.now() + settings.value.leaseTtlSec * 1000 },
-      branch: t.branch ?? ticketBranch(t.projectId, t.id, t.title),
+      branch: t.branch ?? ticketBranch(t.projectId, t.id, t.title, this.branchPrefix(settings.value)),
       log: this.log(t, actor, `booked${workerId ? ` by worker ${workerId}` : ''}`),
       updatedAt: this.now(),
       version: tv.v + 1,
     };
+    const startEpic = epic?.state === 'planned' ? { ...project.value, epic: { ...epic, state: 'in_progress' as const, startDate: epic.startDate ?? new Date(this.now()).toISOString().slice(0, 10) } } : project.value;
     await this.store.commit(
       [
         this.store.put(K.ticket(booked), booked, tv.v),
-        this.store.put(K.project(project.value.id), project.value, project.v),
+        this.store.put(K.project(project.value.id), startEpic, project.v),
         ...this.lockOps(booked, 'put'),
       ],
       [this.ev(actor, { type: 'ticket.booked', summary: `${t.id} booked by ${actor.seatId}: ${t.title}`, projectId: t.projectId, ticketId: t.id, data: { branch: booked.branch } })],
@@ -540,25 +613,39 @@ export class Hub {
   async next(actor: Actor, body: unknown): Promise<{ booked: Ticket[] }> {
     const opts = parse(nextSchema, body);
     const [seat, settings] = await Promise.all([this.requireSeat(actor.seatId), this.settings()]);
-    const projectId = opts.projectId ?? seat.value.projects[0] ?? fail('invalid', 'no project: pass projectId or pin your seat to a project');
+    const projectIds = opts.projectId ? [opts.projectId] : await this.pickOrderOfEpics(seat.value.projects);
+    if (projectIds.length === 0) fail('invalid', 'no project: pass projectId or pin your seat to a project');
     const lanes = opts.lanes ?? seat.value.lanes;
     const booked: Ticket[] = [];
     const skipped = new Set<string>();
-    for (let round = 0; round < 12 && booked.length < opts.n; round++) {
-      const tvs = await this.ticketsV(projectId);
-      const all = tvs.map((t) => t.value);
-      assertSeatUnderLimit(seat.value, settings.value, activeBookingsOf(actor.seatId, all));
-      const candidate = claimable(all, projectId, lanes).find((t) => !skipped.has(t.id));
-      if (!candidate) break;
-      const tv = tvs.find((x) => x.value.id === candidate.id) as Versioned<Ticket>;
-      try {
-        booked.push(await this.bookOne(actor, tv, all, opts));
-      } catch (e) {
-        if (!(e instanceof DomainError) || !['conflict', 'path_conflict', 'not_ready'].includes(e.code)) throw e;
-        skipped.add(candidate.id);
+    for (const projectId of projectIds) {
+      for (let round = 0; round < 12 && booked.length < opts.n; round++) {
+        const tvs = await this.ticketsV(projectId);
+        const all = tvs.map((t) => t.value);
+        assertSeatUnderLimit(seat.value, settings.value, activeBookingsOf(actor.seatId, all));
+        const candidate = claimable(all, projectId, lanes).find((t) => !skipped.has(t.id));
+        if (!candidate) break;
+        const tv = tvs.find((x) => x.value.id === candidate.id) as Versioned<Ticket>;
+        try {
+          booked.push(await this.bookOne(actor, tv, all, opts));
+        } catch (e) {
+          if (!(e instanceof DomainError) || !['conflict', 'path_conflict', 'not_ready'].includes(e.code)) throw e;
+          skipped.add(candidate.id);
+        }
       }
+      if (booked.length >= opts.n) break;
     }
     return { booked };
+  }
+
+  /** In ongoing mode a seat follows several epics: pick from those agents may work on, highest priority first. */
+  private async pickOrderOfEpics(projectIds: readonly string[]): Promise<string[]> {
+    if (this.mode === 'event') return projectIds.slice(0, 1);
+    const projects = (await Promise.all(projectIds.map((id) => this.store.get<Project>(K.project(id))))).flatMap((p) => (p ? [p.value] : []));
+    return projects
+      .filter((p) => !p.epic || CLAIMABLE_EPIC_STATES.includes(p.epic.state))
+      .sort((a, b) => (a.epic?.priority ?? 100) - (b.epic?.priority ?? 100))
+      .map((p) => p.id);
   }
 
   async heartbeat(actor: Actor, ticketId: string, body: unknown): Promise<{ leaseExpiresAt: number }> {
@@ -637,7 +724,7 @@ export class Hub {
     const tv = await this.requireTicket(ticketId);
     const t = tv.value;
     if (t.status !== 'review') fail('not_ready', `${t.id} is ${t.status}, not waiting for review`);
-    if (t.booking?.seatId === actor.seatId) fail('forbidden', `${t.id} was written by your seat; another seat must review it`);
+    if (t.booking?.seatId === actor.seatId && this.mode === 'event') fail('forbidden', `${t.id} was written by your seat; another seat must review it`);
     if (t.review && t.review.seatId !== actor.seatId && t.review.leaseExpiresAt > this.now()) fail('conflict', `${t.id} is being reviewed by ${t.review.seatId}`);
     const settings = await this.settings();
     const next: Ticket = {
@@ -659,14 +746,17 @@ export class Hub {
     const tv = await this.requireTicket(ticketId);
     const t = tv.value;
     if (t.status !== 'review') fail('not_ready', `${t.id} is ${t.status}`);
-    if (!(t.review?.seatId === actor.seatId || (actor.kind === 'human' && t.booking?.seatId !== actor.seatId)))
+    if (!(t.review?.seatId === actor.seatId || (actor.kind === 'human' && (t.booking?.seatId !== actor.seatId || this.mode === 'ongoing'))))
       fail('forbidden', `book the review of ${t.id} first (POST /tickets/${t.id}/review/book)`);
     const now = this.now();
     if (input.outcome === 'merged') {
+      if (t.suspectBy?.length) fail('not_ready', `${t.id} is suspect under ${t.suspectBy.join(', ')}: wait until the change request is decided before merging`);
       const next: Ticket = {
         ...t,
         status: transition(t, 'merged'),
         prUrl: input.prUrl ?? t.prUrl,
+        ...(input.mergeSha ? { mergeSha: input.mergeSha } : {}),
+        ...(input.files?.length ? { files: input.files } : {}),
         booking: undefined,
         review: undefined,
         log: this.log(t, actor, `merged${input.note ? `: ${input.note}` : ''}`),
@@ -875,6 +965,11 @@ export class Hub {
         data: { decisionId: settled.id, outcome: settled.outcome, escalationId: settled.escalationId },
       }),
     );
+    if (settled.status === 'made' && settled.outcome) {
+      const rec = await this.ongoing.autoRecordOps('vote', settled.id, settled.projectId, settled.question, settled.outcome);
+      ops.push(...rec.ops);
+      events.push(...rec.events);
+    }
     if (settled.escalationId) {
       const ev = await this.store.get<Escalation>({ PK: `ESC#${settled.escalationId}`, SK: 'META' });
       if (ev && !isClosed(ev.value)) {
@@ -1013,17 +1108,30 @@ export class Hub {
 
   // ---------- proposals & human actions ----------
 
+  /** True when this actor may take the action without a human (ongoing mode lets agents do most things). */
+  async mayAct(actor: Actor, action: HumanAction): Promise<boolean> {
+    return actor.kind === 'human' || agentActions(this.mode, (await this.settings()).value).includes(action);
+  }
+
   async propose(actor: Actor, body: unknown): Promise<Record<string, unknown>> {
     const input = parse(proposalSchema, body);
     const payload = parse(actionPayloadSchemas[input.action], input.payload);
-    if (actor.kind === 'human') return { executed: true, result: await this.execute(actor, input.action, payload) };
+    let needsHuman: string[] = [];
+    if (await this.mayAct(actor, input.action)) {
+      try {
+        return { executed: true, result: await this.execute(actor, input.action, payload) };
+      } catch (e) {
+        if (!(e instanceof DomainError && e.code === 'forbidden' && Array.isArray(e.details?.needsHuman))) throw e;
+        needsHuman = e.details.needsHuman as string[];
+      }
+    }
     if (input.action === 'plan.load') await this.precheckPlan(payload as ActionPayloads['plan.load']);
     const [pn] = await this.store.nextIds('proposal');
     const proposal: Proposal = {
       id: prefixedId('P', pn),
       action: input.action,
       payload,
-      summary: input.summary || `${input.action} proposed by ${actor.seatId}`,
+      summary: `${input.summary || `${input.action} proposed by ${actor.seatId}`}${needsHuman.length ? ` (a human decides because it ${needsHuman.join('; ')})` : ''}`,
       proposedBy: actor.seatId,
       status: 'pending',
       createdAt: this.now(),
@@ -1042,7 +1150,7 @@ export class Hub {
       ],
     );
     const rt = await this.deps.runtime();
-    return { executed: false, proposal, approveUrl: `${rt.boardUrl.replace(/\/$/, '')}/#/approve/${proposal.id}` };
+    return { executed: false, proposal, needsHuman, approveUrl: `${rt.boardUrl.replace(/\/$/, '')}/#/approve/${proposal.id}` };
   }
 
   async decideProposal(actor: Actor, id: string, approve: boolean): Promise<Proposal> {
@@ -1073,7 +1181,7 @@ export class Hub {
   }
 
   async execute(actor: Actor, action: HumanAction, raw: unknown): Promise<unknown> {
-    requireHuman(actor);
+    if (!(await this.mayAct(actor, action))) requireHuman(actor);
     switch (action) {
       case 'project.create':
         return this.projectCreate(actor, parse(actionPayloadSchemas['project.create'], raw));
@@ -1107,6 +1215,22 @@ export class Hub {
         return this.createWorkerToken(actor, parse(actionPayloadSchemas['token.worker'], raw).workerId);
       case 'release.publish':
         return this.releasePublish(actor, parse(actionPayloadSchemas['release.publish'], raw));
+      case 'epic.update':
+        return this.ongoing.epicUpdate(actor, parse(actionPayloadSchemas['epic.update'], raw));
+      case 'repo.set':
+        return this.ongoing.repoSet(actor, parse(actionPayloadSchemas['repo.set'], raw));
+      case 'repo.remove':
+        return this.ongoing.repoRemove(actor, parse(actionPayloadSchemas['repo.remove'], raw));
+      case 'input.approve':
+        return this.ongoing.approveInput(actor, parse(actionPayloadSchemas['input.approve'], raw));
+      case 'decision.record':
+        return this.ongoing.recordDecision(actor, parse(actionPayloadSchemas['decision.record'], raw));
+      case 'change.approve':
+        return this.ongoing.approveChange(actor, parse(actionPayloadSchemas['change.approve'], raw));
+      case 'change.reject':
+        return this.ongoing.rejectChange(actor, parse(actionPayloadSchemas['change.reject'], raw));
+      case 'retention.apply':
+        return this.store.applyRetention();
     }
   }
 
@@ -1146,10 +1270,14 @@ export class Hub {
 
   private async projectCreate(actor: Actor, p: ActionPayloads['project.create']): Promise<Project> {
     const id = p.id ?? slugify(p.name);
+    const catalogRepos = p.repoRefs?.length ? await this.ongoing.catalogRepos(p.repoRefs) : [];
+    const repos = [...(p.repos ?? []).map((r) => normalizeRepo(r, id)), ...catalogRepos.map((r) => ({ ...r, integrationBranch: r.integrationBranch || (this.mode === 'ongoing' ? r.baseBranch : `hack/${id}`) }))];
+    if (repos.length === 0) fail('invalid', 'a project needs at least one repo: pass repos, or repoRefs naming repos from the catalog');
+    if (new Set(repos.map((r) => r.name)).size !== repos.length) fail('invalid', 'repo names must be unique within a project');
     const project: Project = {
       id,
       name: p.name,
-      repos: p.repos.map((r) => normalizeRepo(r, id)),
+      repos,
       lanes: p.lanes,
       status: 'active',
       phase: 'plan',
@@ -1160,11 +1288,12 @@ export class Hub {
       ...(p.demo ? { demo: p.demo } : {}),
       links: p.links,
       tags: p.tags,
+      ...(this.mode === 'ongoing' ? { epic: { ...defaultEpic(actor.seatId), ...withoutUndefined(p.epic ?? {}) } } : {}),
     };
     try {
       await this.store.commit(
         [this.store.putNew(K.project(id), project)],
-        [this.ev(actor, { type: 'project.created', summary: `Project ${p.name} (${id}) created by ${actor.seatId}`, data: { projectId: id, repos: p.repos.map((r) => r.name) } })],
+        [this.ev(actor, { type: 'project.created', summary: `${this.mode === 'ongoing' ? 'Epic' : 'Project'} ${p.name} (${id}) created by ${actor.seatId}`, data: { projectId: id, repos: repos.map((r) => r.name) } })],
       );
     } catch (e) {
       if (e instanceof DomainError && e.code === 'conflict') fail('conflict', `project ${id} already exists`);
@@ -1222,22 +1351,38 @@ export class Hub {
   private async goalSet(actor: Actor, p: ActionPayloads['goal.set']): Promise<Goal> {
     const pv = await this.requireProject(p.projectId);
     const version = pv.value.goalVersion + 1;
+    const previous = pv.value.goalVersion ? (await this.store.get<Goal>(K.goal(p.projectId, pv.value.goalVersion)))?.value : undefined;
+    if (actor.kind === 'agent' && previous?.statement) fail('forbidden', `changing the goal of ${p.projectId} needs a human`, { needsHuman: ['changes the epic goal'] });
+    const dod = assignDodIds(previous ? dodOf(previous) : undefined, p.definitionOfDone);
+    if (p.refs?.length) await this.ongoing.assertRefs(p.projectId, p.refs.filter((r) => !r.startsWith('dod:')));
     const goal: Goal = {
       projectId: p.projectId,
       version,
       statement: p.statement,
-      definitionOfDone: p.definitionOfDone,
+      definitionOfDone: dod.map((d) => d.text),
+      dod,
       demoScript: p.demoScript,
       nonGoals: p.nonGoals,
+      ...(p.refs?.length ? { refs: p.refs } : {}),
       contact: p.contact ?? actor.seatId,
       createdBy: actor.seatId,
       createdAt: this.now(),
     };
-    const floor = version > 1 ? await this.openFloorRecord(actor, p.projectId, `Goal v${version}: ${p.statement}`) : { ops: [], events: [] };
+    const floor = version > 1 && this.mode === 'event' ? await this.openFloorRecord(actor, p.projectId, `Goal v${version}: ${p.statement}`) : { ops: [], events: [] };
     await this.store.commit(
       [this.store.put(K.project(pv.value.id), { ...pv.value, goalVersion: version }, pv.v), this.store.putNew(K.goal(p.projectId, version), goal), ...floor.ops],
       [this.ev(actor, { type: 'goal.set', summary: `${p.projectId} goal v${version} by ${actor.seatId}: ${p.statement}`, projectId: p.projectId, data: { version } }), ...floor.events],
     );
+    if (this.mode === 'ongoing' && previous) {
+      const diff = changedDod(dodOf(previous), dod);
+      if (diff.changed.length)
+        await this.ongoing.intakeIfCited(actor, p.projectId, diff.changed.map((d) => `dod:${d}`), {
+          title: `Scope v${version}: definition of done changed`,
+          reason: `The definition of done changed in scope v${version} (${diff.changed.join(', ')} changed or removed).`,
+          trigger: { kind: 'manual', ref: `scope:v${version}` },
+          addedRefs: diff.added.map((d) => `dod:${d}`),
+        });
+    }
     return goal;
   }
 
@@ -1338,6 +1483,8 @@ export class Hub {
       defaultContestMin: p.defaultContestMin ?? sv.value.defaultContestMin,
       maxBookingsPerSeat: p.maxBookingsPerSeat === null ? undefined : (p.maxBookingsPerSeat ?? sv.value.maxBookingsPerSeat),
       toolRepoUrl: p.toolRepoUrl === null ? undefined : (p.toolRepoUrl ?? sv.value.toolRepoUrl),
+      branchPrefix: p.branchPrefix === null ? undefined : (p.branchPrefix ?? sv.value.branchPrefix),
+      agentActions: p.agentActions === null ? undefined : (p.agentActions ?? sv.value.agentActions),
     };
     await this.store.commit([this.store.put(K.settings(), next, sv.v)], [
       this.ev(actor, { type: 'settings.updated', summary: `Hub settings changed by ${actor.seatId}`, data: { ...next } }),
@@ -1442,9 +1589,12 @@ export class Hub {
     const selected = projectId ?? projects.find((p) => p.status === 'active')?.id ?? projects[0]?.id;
     const sel = perProject.find((x) => x.p.id === selected);
     const goal = sel && sel.p.goalVersion ? (await this.store.get<Goal>(K.goal(sel.p.id, sel.p.goalVersion)))?.value : undefined;
+    const ongoing = this.mode === 'ongoing' ? await this.ongoing.boardData(selected, perProject) : {};
     return {
       lastSeq,
+      mode: this.mode,
       settings: settings.value,
+      ...ongoing,
       projects: perProject.map(({ p, tickets }) => ({
         ...p,
         counts: tickets.reduce<Record<string, number>>((acc, t) => ({ ...acc, [t.status]: (acc[t.status] ?? 0) + 1 }), {}),
@@ -1521,6 +1671,11 @@ export class Hub {
       if (out.kind === 'none') continue;
       try {
         const unpark = out.kind === 'to_humans' ? { ops: [], events: [] } : await this.unparkOps(out.escalation, 'system');
+        if (out.kind === 'finalized' && out.escalation.resolution?.text) {
+          const rec = await this.ongoing.autoRecordOps('escalation', ev.value.id, pid, `${rule.code} ${rule.name}: ${ev.value.summary}`, out.escalation.resolution.text);
+          unpark.ops.push(...rec.ops);
+          unpark.events.push(...rec.events);
+        }
         const type = out.kind === 'finalized' ? 'escalation.final' : out.kind === 'defaulted' ? 'escalation.defaulted' : 'escalation.to_humans';
         const summary =
           out.kind === 'to_humans'
@@ -1535,6 +1690,7 @@ export class Hub {
         if (!(e instanceof DomainError && e.code === 'conflict')) throw e;
       }
     }
+    if (this.mode === 'ongoing') Object.assign(stats, await this.ongoing.sweep());
     for (const pv of await this.store.queryGsi<Proposal>('PROPS', 'pending#')) {
       if (pv.value.expiresAt > now) continue;
       const next = { ...pv.value, status: 'expired' as const };
@@ -1550,6 +1706,9 @@ export class Hub {
     return stats;
   }
 }
+
+const withoutUndefined = <T extends Record<string, unknown>>(o: T): Partial<T> =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 
 const sanitizeResult = (result: unknown): unknown => {
   if (result && typeof result === 'object' && 'token' in (result as Record<string, unknown>)) {

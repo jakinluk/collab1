@@ -360,3 +360,26 @@ interface Project {
 - **Presets** (`plugin/templates/repo-presets.json`, used by `/c1:project new`):
   - `nx-monorepo`: `hotPaths` = package.json, package-lock.json, nx.json, `**/project.json`, tsconfig.base.json, `.github/**`, `**/serverless*.yml`; `contractPaths` = `libs/shared/**`; `setup` = `npm ci`; `verify` = typecheck `npm run type:check`, lint `npx nx affected -t lint`, unit `npx nx affected -t unit`; `notes` = "Never run builds (npm run build, nx build, affected:build): use type:check and unit tests"; `instructionsPath` = CLAUDE.md.
   - `node-app` and `expo-app` with sensible equivalents.
+
+## 14. Ongoing mode (v0.5; `docs/ONGOING.md`)
+
+Hub mode comes from `HUB_MODE` (`event` | `ongoing`); `GET /me` and `GET /board` return `mode`. Ongoing-only routes answer 400 on an event hub.
+
+| Route | Who | What |
+| --- | --- | --- |
+| `POST /tokens/rotate {token}` | agent | new token for the caller's seat; the old one works for 10 more minutes (ongoing only) |
+| `GET /catalog/repos` | any | the repo catalog |
+| `GET /inputs[?projectId]`, `GET /inputs/{I}[?version]` | any | inputs; one version with body and sections, plus the version list |
+| `POST /inputs {kind,title,body,projectIds,note?}` | any | new input, draft v1 |
+| `POST /inputs/{I}/versions {body,note?}` | any | new draft version; returns the section diff against the approved one |
+| `GET /decision-records[?projectId]`, `GET /decision-records/{R}` | any | the decision log |
+| `GET /changes[?projectId][&status=open\|…]`, `GET /changes/{CR}` | any | change requests; the single view adds the impacted tickets and before/after text of changed input sections |
+| `POST /changes {projectId,title,reason,changedRefs?,ticketIds?,milestone?,repo?,contractPaths?,scope?}` | any | open one by hand |
+| `POST /changes/{CR}/assessment {impact[],newTickets[],scope?,summary?}` | any | verdicts; status becomes `proposed` when every impacted ticket has one |
+| `POST /changes/{CR}/rebase` | any | re-run the impact query on the current scope version |
+| `GET /projects/{pid}/log` | any | change log entries, newest first |
+| `GET /export` | any | everything, for backups and leaving |
+
+New actions (through `POST /proposals` or `POST /actions`): `epic.update`, `repo.set`, `repo.remove`, `input.approve`, `decision.record`, `change.approve`, `change.reject`, `retention.apply`. In ongoing mode `POST /proposals` executes directly for agents when the action is in `settings.agentActions` (default: `project.create`, `project.update`, `goal.set` for a first goal, `plan.load`, `epic.update`, `input.approve`, `decision.record`, `change.approve`, `change.reject`) and the action meets none of the human conditions. Otherwise it creates a proposal and returns `needsHuman` reasons.
+
+Ticket additions: `refs`, `scopeVersion`, `milestone`, `suspectBy`, `deferred`, `supersedes`, `supersededBy`, `reworks`, `dropReason`, `mergeSha`, `files`, `forChange`; types `rework` and `replan`. `POST /tickets/{T}/review/done` accepts `mergeSha` and `files`, and refuses to merge a suspect ticket. Change request statuses: `assessing` → `proposed` → (`approved` during an agent approval's contest window) → `applying` → `applied`, or `rejected`.

@@ -25,6 +25,8 @@ export type Readiness = { ok: true } | { ok: false; code: 'not_ready' | 'path_co
 
 export const readiness = (ticket: Ticket, all: readonly Ticket[]): Readiness => {
   if (ticket.status !== 'ready') return { ok: false, code: 'not_ready', reason: `status is ${ticket.status}` };
+  if (ticket.suspectBy?.length) return { ok: false, code: 'not_ready', reason: `suspect: change request ${ticket.suspectBy.join(', ')} may change it` };
+  if (ticket.deferred) return { ok: false, code: 'not_ready', reason: 'deferred out of the current milestone' };
   if (!depsDone(ticket, all)) {
     const pending = ticket.deps.filter((d) => all.find((t) => t.id === d)?.status !== 'done');
     return { ok: false, code: 'not_ready', reason: `waiting for ${pending.join(', ')}` };
@@ -103,6 +105,11 @@ export const renderCard = (t: Ticket, repo?: Repo): string => {
     t.branch ? `Branch: ${t.branch}` : '',
     t.prUrl ? `PR: ${t.prUrl}` : '',
     t.deps.length ? `Depends on: ${t.deps.join(', ')}` : '',
+    t.milestone ? `Milestone: ${t.milestone}` : '',
+    t.refs?.length ? `Implements: ${t.refs.join(', ')}` : '',
+    t.suspectBy?.length ? `SUSPECT: change request ${t.suspectBy.join(', ')} may change this ticket; finish to a checkpoint and push, but do not merge` : '',
+    t.reworks?.length ? `Reworks merged code of: ${t.reworks.join(', ')}` : '',
+    t.supersedes?.length ? `Replaces: ${t.supersedes.join(', ')}` : '',
     '',
     t.description,
     '',

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export const BOOLEAN_FLAGS = new Set(['json', 'ready', 'failed', 'help', 'all', 'quiet', 'no-sync', 'force', 'urgent', 'dry-run']);
-export const ARRAY_FLAGS = new Set(['option', 'repo', 'lane', 'set', 'tag', 'link']);
+export const BOOLEAN_FLAGS = new Set(['json', 'ready', 'failed', 'help', 'all', 'quiet', 'no-sync', 'force', 'urgent', 'dry-run', 'sections', 'hub']);
+export const ARRAY_FLAGS = new Set(['option', 'repo', 'lane', 'set', 'tag', 'link', 'ref', 'milestone', 'contract-path', 'hot-path']);
 
 export function parseArgs(argv) {
   const positional = [];

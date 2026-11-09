@@ -107,6 +107,23 @@ route('DELETE', '/tokens/{tokenId}', async (hub, r, a) => (await hub.revokeToken
 route('POST', '/actions', async (hub, r, a) => ({ result: await hub.directAction(a(), r.body) }));
 route('GET', '/release', async (hub, _r, a) => (a(), { release: (await hub.currentRelease()) ?? null }));
 route('POST', '/tool/bugs', (hub, r, a) => hub.fileToolBug(a(), r.body), { status: 201 });
+route('POST', '/tokens/rotate', (hub, r, a) => hub.rotateToken(a(), r.body));
+
+// ongoing mode: repo catalog, inputs, decision records, change requests, export
+route('GET', '/catalog/repos', async (hub, _r, a) => (a(), { repos: await hub.ongoing.catalog() }));
+route('GET', '/inputs', async (hub, r, a) => (a(), { inputs: await hub.ongoing.listInputs(r.query.projectId) }));
+route('POST', '/inputs', (hub, r, a) => hub.ongoing.createInput(a(), r.body), { status: 201 });
+route('GET', '/inputs/{iid}', (hub, r, a) => (a(), hub.ongoing.getInput(r.params.iid, r.query.version ? num(r.query.version, 0) : undefined)));
+route('POST', '/inputs/{iid}/versions', (hub, r, a) => hub.ongoing.addVersion(a(), r.params.iid, r.body), { status: 201 });
+route('GET', '/decision-records', async (hub, r, a) => (a(), { records: await hub.ongoing.listRecords(r.query.projectId) }));
+route('GET', '/decision-records/{rid}', (hub, r, a) => (a(), hub.ongoing.getRecord(r.params.rid)));
+route('GET', '/changes', async (hub, r, a) => (a(), { changes: await hub.ongoing.listChanges(r.query.projectId, r.query.status) }));
+route('POST', '/changes', (hub, r, a) => hub.ongoing.openChange(a(), r.body), { status: 201 });
+route('GET', '/changes/{cid}', (hub, r, a) => (a(), hub.ongoing.changeView(r.params.cid)));
+route('POST', '/changes/{cid}/assessment', (hub, r, a) => hub.ongoing.assess(a(), r.params.cid, r.body));
+route('POST', '/changes/{cid}/rebase', (hub, r, a) => hub.ongoing.rebase(a(), r.params.cid));
+route('GET', '/export', (hub, _r, a) => (a(), hub.ongoing.exportAll()));
+route('GET', '/projects/{pid}/log', (hub, r, a) => (a(), hub.ongoing.changelog(r.params.pid)));
 
 export const json = (statusCode: number, body: unknown): APIGatewayProxyStructuredResultV2 => ({
   statusCode,

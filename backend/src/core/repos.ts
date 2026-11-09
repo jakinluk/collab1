@@ -17,6 +17,7 @@ export const normalizeRepo = (r: RepoLike, projectId: string): Repo => ({
   laneMap: r.laneMap ?? [],
   prLabels: r.prLabels ?? [],
   ...(r.notes ? { notes: r.notes } : {}),
+  ...(r.fromCatalog ? { fromCatalog: true } : {}),
 });
 
 export const normalizeProject = (p: ProjectLike): Project => ({

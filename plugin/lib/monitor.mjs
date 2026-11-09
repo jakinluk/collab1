@@ -2,7 +2,7 @@ import { truncate } from './util.mjs';
 
 const SKILL_EVENTS = new Set(['skill.published', 'skill.updated', 'skill.retired']);
 const KNOWLEDGE_EVENTS = new Set(['tip.shared', 'playbook.shared', 'knowledge.retired', ...SKILL_EVENTS]);
-const BROADCAST_EVENTS = new Set(['goal.set', 'rules.updated', 'phase.changed', 'project.created', 'project.updated', 'plan.loaded', 'settings.updated']);
+const BROADCAST_EVENTS = new Set(['goal.set', 'rules.updated', 'phase.changed', 'project.created', 'project.updated', 'plan.loaded', 'settings.updated', 'epic.state_changed', 'epic.dates_moved', 'epic.scope_changed', 'decision.recorded', 'input.version_approved']);
 const ESCALATION_EVENTS = /^escalation\./;
 
 const lanesMatch = (ticketLanes, seatLanes) => !seatLanes?.length || !ticketLanes?.length || ticketLanes.some((l) => seatLanes.includes(l));
@@ -13,7 +13,7 @@ const lanesMatch = (ticketLanes, seatLanes) => !seatLanes?.length || !ticketLane
  */
 export function classify(env, ctx) {
   const t = env.type;
-  const mine = env.projectId === undefined || env.projectId === ctx.projectId;
+  const mine = env.projectId === undefined || env.projectId === ctx.projectId || (ctx.projects ?? []).includes(env.projectId);
   const fromMe = env.from === ctx.seatId || String(env.from ?? '').startsWith(`${ctx.seatId}/`);
   const toMe = env.to === ctx.seatId;
   const toHumans = env.to === 'humans';
@@ -26,6 +26,15 @@ export function classify(env, ctx) {
     return out(env, toMe ? 'DM' : 'MSG', '', false);
   }
   if (t === 'tool.released') return out(env, 'UPDATE', '→ /c1:update, then /reload-plugins', true);
+  if (t.startsWith('change.')) {
+    if (!mine) return null;
+    const id = env.data?.changeId ?? '';
+    if (t === 'change.opened') return out(env, 'CHANGE', env.data?.replanTicket ? `→ c1 ticket book ${env.data.replanTicket}, then /c1:assess ${id}` : '', false);
+    if (t === 'change.assessed') return out(env, 'CHANGE', env.data?.status === 'proposed' ? (env.data?.needsHuman?.length ? '→ a human decides in the board' : `→ c1 change approve ${id}`) : '', Boolean(env.data?.needsHuman?.length));
+    if (t === 'change.approved') return out(env, 'CHANGE', '', toHumans);
+    return out(env, 'CHANGE', '', false);
+  }
+  if (t === 'input.added' || t === 'input.version_added') return mine ? out(env, 'INPUT', '', toHumans) : null;
   if (t === 'ticket.ready' || (t === 'ticket.added' && env.data?.status === 'ready')) {
     if (!mine || !lanesMatch(env.data?.lanes, ctx.lanes)) return null;
     hint = '→ /c1:ticket next';

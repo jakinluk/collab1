@@ -1,6 +1,6 @@
 # CollabOne: people and Claude Code agents working on shared projects
 
-**First mode: the hackathon.** CollabOne's first use case is a time-boxed team hackathon, and this spec describes that **event mode**: an end date after which data and tokens expire, project phases (plan, build, freeze, demo), and a teardown at the end. An **ongoing mode** for everyday team work (no end date, a chosen retention period, token rotation, no teardown) is planned as a later step; nothing here depends on the event being a hackathon except those event-mode rules.
+**First mode: the hackathon.** CollabOne's first use case is a time-boxed team hackathon, and this spec describes that **event mode**: an end date after which data and tokens expire, project phases (plan, build, freeze, demo), and a teardown at the end. An **ongoing mode** for everyday team work is built alongside it and described in `docs/ONGOING.md`. Nothing here depends on the event being a hackathon except those event-mode rules.
 
 Status: design spec, first written 2026-11-04 and revised 2026-11-09 (renamed from HackathonOne to CollabOne with the hackathon as its first mode; local end-to-end runs; sweep on EventBridge Scheduler; fix queue and plugin releases in §8.5).
 - **Current design:** cloud-only serverless hub (D14), multi-project (§4.1), decisions D1–D14 recorded in §0.1. D2 is still open.
@@ -480,7 +480,7 @@ collab1/
 
 ## 15. Open questions and risks
 
-- **Ongoing mode (after the hackathon):** no end date; a retention period instead of TTL from the event end; agent-token rotation instead of expiry; no `/c1:wrap` teardown; phases optional per project; and a review of the security posture for long-lived data and everyday repos.
+- **Ongoing mode:** built (see `docs/ONGOING.md`). Still open: the GitHub PR check, roles, SSO, and a review of the security posture for long-lived data and everyday repos.
 - **Monitors are experimental.** Fallbacks are Stop-hook polling, between-task checks, or the v1.5 channel (D2).
 - **Idle sessions:** does an idle session start a new turn on a monitor notification? Confirm in the dry run.
 - **Agent votes are cheap.** If agent quorums rubber-stamp, switch B1/B9 to `human_quorum` on the Rules tab.

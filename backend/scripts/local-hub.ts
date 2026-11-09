@@ -12,7 +12,7 @@
  *   Scheduler + sweep  -> a timer calling hub.sweep() (and POST /_dev/sweep)
  *   CloudFront         -> this server: it serves board/ and routes /api/v1/*
  *
- * Usage: npx tsx scripts/local-hub.ts [--port 8787] [--state ./local-state.json] [--sweep-ms 60000]
+ * Usage: npx tsx scripts/local-hub.ts [--port 8787] [--mode event|ongoing] [--state ./local-state.json] [--sweep-ms 60000]
  */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -40,6 +40,7 @@ const HOST = arg('host', '127.0.0.1');
 const BASE = `http://localhost:${PORT}`;
 const STATE = arg('state', '');
 const SWEEP_MS = Number(arg('sweep-ms', '60000'));
+const MODE = arg('mode', process.env.HUB_MODE ?? 'event') === 'ongoing' ? 'ongoing' : 'event';
 const TOOL_REPO = arg('tool-repo', process.env.TOOL_REPO_URL ?? '');
 const BOARD_DIR = path.resolve(__dirname, '../../board');
 const DEV_SECRET = randomBytes(32);
@@ -113,7 +114,7 @@ const files = {
 // ---------- hub ----------
 
 const hub = new Hub({
-  store: new Store('c1', 21, db.asClient(), now),
+  store: new Store('c1', { mode: MODE, dataTtlDays: 21, eventDays: 90 }, db.asClient(), now),
   files,
   pepper: async () => 'local-pepper',
   runtime: async () => ({
@@ -124,7 +125,9 @@ const hub = new Hub({
     region: 'local',
     events: { httpHost: `localhost:${PORT}`, realtimeUrl: `ws://localhost:${PORT}/event/realtime`, namespace: 'c1' },
   }),
-  eventEndsAt: Date.parse(process.env.EVENT_ENDS_AT ?? new Date(Date.now() + 3 * 86_400_000).toISOString()),
+  mode: MODE,
+  eventEndsAt: MODE === 'event' ? Date.parse(process.env.EVENT_ENDS_AT ?? new Date(Date.now() + 3 * 86_400_000).toISOString()) : undefined,
+  tokenTtlDays: Number(process.env.TOKEN_TTL_DAYS ?? '30'),
   now,
   toolRepoUrl: TOOL_REPO || undefined,
 });
@@ -368,7 +371,7 @@ wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
 setInterval(() => void hub.sweep().catch((e) => console.error('sweep failed', e)), SWEEP_MS).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log(`CollabOne local hub on ${BASE}`);
+  console.log(`CollabOne local hub (${MODE} mode) on ${BASE}`);
   console.log(`  board:    ${BASE}/            (local sign-in: any email)`);
   console.log(`  api:      ${BASE}${API_PREFIX}`);
   console.log(`  realtime: ws://localhost:${PORT}/event/realtime`);

@@ -1,13 +1,15 @@
 # End-to-end runs
 
-Both suites start their own local hub (`backend/scripts/local-hub.ts`) on a free port, use fresh temporary homes, and clean up after themselves. They need `npm ci` in `backend/` first.
+Every suite starts its own local hub (`backend/scripts/local-hub.ts`) on a free port, use fresh temporary homes, and clean up after themselves. They need `npm ci` in `backend/` first.
 
 | Suite | Command | What it drives |
 |---|---|---|
 | CLI | `bash e2e/cli-e2e.sh` | the real `c1` CLI and hooks for two seats (ania, bob), with both `c1 watch` monitors running |
 | Board | `cd e2e && npm ci && node board-e2e.mjs [--headed]` | the real board in Google Chrome (Playwright, channel `chrome`), with a real CLI seat on the agent side |
+| CLI, ongoing mode | `bash e2e/ongoing-e2e.sh` | one person and their agent in ongoing mode: catalog, epic, PRD ingest → re-plan ticket → assessment → agent approval and contest window, build and merge, PRD v2 → suspect tickets → rework of merged code needing a human, decisions folding into one re-plan, a human rejecting it, moved target date, change and decision logs, token rotation, export |
+| Board, ongoing mode | `cd e2e && node board-ongoing-e2e.mjs` | roadmap, epic editor, changes (approve and reject from the board), inputs and the decision log, adding and approving an input, the change log |
 
-Set `PORT` to move the hub (defaults: 8791 for the CLI suite, 8792 for the board suite). The board suite writes screenshots to a temp folder, or to `SHOTS=<dir>`.
+Set `PORT` to move the hub (defaults: 8791 CLI, 8792 board, 8793 ongoing CLI, 8794 ongoing board). The board suite writes screenshots to a temp folder, or to `SHOTS=<dir>`.
 
 ## What the CLI suite checks
 

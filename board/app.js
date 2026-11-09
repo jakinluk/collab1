@@ -337,12 +337,13 @@
 
   function topBar() {
     const p = project();
-    const tabs = [
-      ['board', 'Board', 'columns'],
-      ['rules', 'Rules', 'rules'],
-      ['tokens', 'Tokens & Macs', 'key'],
-      ['settings', 'Settings', 'sliders'],
-    ];
+    const tabs = [['board', 'Board', 'columns']]
+      .concat(ongoing() ? [['roadmap', 'Roadmap', 'layers'], ['changes', 'Changes', 'alert'], ['intent', 'Inputs & decisions', 'doc'], ['log', 'Log', 'book']] : [])
+      .concat([
+        ['rules', 'Rules', 'rules'],
+        ['tokens', 'Tokens & Macs', 'key'],
+        ['settings', 'Settings', 'sliders'],
+      ]);
     const connLabel = { live: 'Live', connecting: 'Connecting', offline: 'Reconnecting', demo: 'Simulated' }[S.conn] || S.conn;
     return h(
       'header',
@@ -352,7 +353,7 @@
         ? h(
             'label',
             { class: 'field-inline' },
-            h('span', { class: 'sr', text: 'Project' }),
+            h('span', { class: 'sr', text: ongoing() ? 'Epic' : 'Project' }),
             h(
               'select',
               {
@@ -364,7 +365,7 @@
             )
           )
         : null,
-      p ? h('span', { class: 'phase-pill', title: 'Project phase', text: 'Phase: ' + (PHASE_LABEL[p.phase] || p.phase || 'Build') }) : null,
+      p && ongoing() && p.epic ? h('span', { class: 'phase-pill', title: 'Epic state', text: 'Epic: ' + p.epic.state.replace('_', ' ') }) : p ? h('span', { class: 'phase-pill', title: 'Project phase', text: 'Phase: ' + (PHASE_LABEL[p.phase] || p.phase || 'Build') }) : null,
       h(
         'nav',
         { class: 'tabs', role: 'tablist', 'aria-label': 'Board sections' },
@@ -455,6 +456,10 @@
     if (S.tab === 'rules') return rulesTab();
     if (S.tab === 'tokens') return tokensTab();
     if (S.tab === 'settings') return settingsTab();
+    if (ongoing() && S.tab === 'roadmap') return roadmapTab();
+    if (ongoing() && S.tab === 'changes') return changesTab();
+    if (ongoing() && S.tab === 'intent') return intentTab();
+    if (ongoing() && S.tab === 'log') return logTab();
     if (!S.data.projects.length) {
       const empty = h(
         'section',
@@ -466,6 +471,271 @@
       return h('div', { class: 'board-layout' }, h('div', { class: 'board-main' }, empty, eventLog()), rail());
     }
     return [projectsStrip(), h('div', { class: 'board-layout' }, h('div', { class: 'board-main' }, goalHeader(), reposPanel(), blockedLane(), kanban(), eventLog()), rail())];
+  }
+
+  /* ---- ongoing mode: roadmap, change requests, inputs and decisions, change log */
+
+  const ongoing = () => S.data.mode === 'ongoing';
+  const CHANGE_CHIP = { assessing: 'warn', proposed: 'accent', approved: 'accent', applying: 'accent', applied: 'good', rejected: 'bad' };
+  const OPEN_CHANGES = ['assessing', 'proposed', 'approved', 'applying'];
+  const DAY_MS = 86400000;
+  const isoDay = (ts) => new Date(ts).toISOString().slice(0, 10);
+
+  async function humanAction(action, payload, okText) {
+    try {
+      const r = await C1.Api.action(action, payload);
+      toast(okText);
+      S.data.log = {};
+      await loadBoard();
+      return r;
+    } catch (e) {
+      toast((e && e.message) || String(e), 'error');
+      return null;
+    }
+  }
+
+  function ofield(label, input) {
+    return h('label', { class: 'field' }, h('span', { text: label }), input);
+  }
+
+  function roadmapTab() {
+    const rows = S.data.roadmap || [];
+    if (!rows.length) return h('section', { class: 'panel', style: { padding: '24px' } }, h('h2', { text: 'No epics yet' }), h('p', { class: 'muted', text: 'Ask an agent: "/c1:ingest prd.md for a new epic", or create one with c1 epic propose-new.' }));
+    const now = Date.now();
+    const dates = [];
+    rows.forEach((r) => {
+      const e = r.epic || {};
+      if (e.startDate) dates.push(Date.parse(e.startDate));
+      if (e.targetDate) dates.push(Date.parse(e.targetDate));
+      (r.milestones || []).forEach((m) => m.targetDate && dates.push(Date.parse(m.targetDate)));
+    });
+    const lo = Math.min(now - 14 * DAY_MS, ...dates);
+    const hi = Math.max(now + 30 * DAY_MS, ...dates) + 7 * DAY_MS;
+    const pct = (ts) => (((ts - lo) / (hi - lo)) * 100).toFixed(2) + '%';
+    const changes = S.data.changes || [];
+    return h(
+      'section',
+      { class: 'panel roadmap', style: { padding: '16px' } },
+      h('div', { class: 'section-title' }, h('h2', { text: 'Roadmap' }), h('span', { class: 'meta', text: isoDay(lo) + ' → ' + isoDay(hi) + ' · dashed line is today · ◆ milestone · ▲ change request' })),
+      rows.map((r) => {
+        const e = r.epic || {};
+        const start = e.startDate ? Date.parse(e.startDate) : null;
+        const end = e.targetDate ? Date.parse(e.targetDate) : null;
+        const done = r.total ? Math.round((r.done / r.total) * 100) : 0;
+        const crs = changes.filter((c) => c.projectId === r.projectId && c.decidedAt && c.status === 'applied');
+        const openCrs = changes.filter((c) => c.projectId === r.projectId && OPEN_CHANGES.includes(c.status));
+        return h(
+          'div',
+          { class: 'rm-row' },
+          h(
+            'div',
+            { class: 'rm-name' },
+            h('button', { class: 'linkish', onclick: () => { S.tab = 'board'; selectProject(r.projectId); } }, h('strong', { text: r.name })),
+            h('div', { class: 'rm-meta' },
+              h('span', { class: 'chip ' + (e.state === 'paused' ? 'warn' : e.state === 'done' ? 'good' : ''), text: e.state || '—' }),
+              h('span', { class: 'chip mono', text: 'v' + r.scopeVersion }),
+              h('span', { class: 'muted', text: r.done + '/' + r.total + ' done' }),
+              r.suspect ? h('span', { class: 'chip warn', text: r.suspect + ' suspect' }) : null,
+              openCrs.length ? h('span', { class: 'chip accent', text: openCrs.length + ' open change' + (openCrs.length > 1 ? 's' : '') }) : null),
+            h('button', { class: 'btn small', onclick: () => openEpicEditor(r) }, 'Edit')
+          ),
+          h(
+            'div',
+            { class: 'rm-track', role: 'img', 'aria-label': r.name + ': ' + (e.startDate || 'no start') + ' to ' + (e.targetDate || 'no target') + ', ' + done + '% done' },
+            h('div', { class: 'rm-today', style: { left: pct(now) } }),
+            start || end
+              ? h('div', { class: 'rm-bar', style: { left: pct(start || now), width: 'calc(' + pct(end || hi) + ' - ' + pct(start || now) + ')' } }, h('div', { class: 'rm-done', style: { width: done + '%' } }))
+              : h('div', { class: 'rm-nodates muted', text: 'no dates yet' }),
+            (r.milestones || []).filter((m) => m.targetDate).map((m) => h('div', { class: 'rm-ms' + (m.total && m.done === m.total ? ' done' : ''), style: { left: pct(Date.parse(m.targetDate)) }, title: m.name + ' · ' + m.targetDate + ' · ' + m.done + '/' + m.total })),
+            crs.map((c) => h('div', { class: 'rm-cr', style: { left: pct(c.decidedAt) }, title: c.id + ' ' + c.title + (c.summary ? ' — ' + c.summary : '') }))
+          )
+        );
+      })
+    );
+  }
+
+  function openEpicEditor(r) {
+    const e = r.epic || {};
+    const states = ['proposed', 'planned', 'in_progress', 'release', 'done', 'paused', 'archived'];
+    const ms = (e.milestones || []).map((m) => m.name + (m.targetDate ? '@' + m.targetDate : '') + (m.done ? ' ✓' : '')).join('\n');
+    openModal(
+      'Epic ' + r.name,
+      [
+        ofield('State', h('select', { name: 'state' }, states.map((s) => h('option', { value: s, selected: e.state === s, text: s })))),
+        ofield('Start date', h('input', { name: 'start', type: 'date', value: e.startDate || '' })),
+        ofield('Target date', h('input', { name: 'target', type: 'date', value: e.targetDate || '' })),
+        ofield('Why the target date moves (recorded as a decision)', h('input', { name: 'reason', placeholder: 'needed when an existing target date changes' })),
+        ofield('Priority (lower goes first)', h('input', { name: 'priority', type: 'number', value: String(e.priority == null ? 100 : e.priority) })),
+        ofield('Milestones, one per line: name@YYYY-MM-DD, end with ✓ when done', h('textarea', { name: 'ms', rows: '4', text: ms })),
+        ofield('Who decides change requests', h('select', { name: 'mode' }, [['owners', 'Owners: ' + (e.owners || []).join(', ')], ['open', 'Anyone in the room']].map((o) => h('option', { value: o[0], selected: e.decisionMode === o[0], text: o[1] })))),
+      ],
+      'Save',
+      async (form) => {
+        const f = form.elements;
+        const byName = {};
+        (e.milestones || []).forEach((m) => (byName[m.name] = m.id));
+        const milestones = f.ms.value.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+          const doneMark = /✓$/.test(l);
+          const parts = l.replace(/✓$/, '').trim().split('@');
+          const name = parts[0].trim();
+          return Object.assign({ name }, byName[name] ? { id: byName[name] } : {}, parts[1] ? { targetDate: parts[1].trim() } : {}, doneMark ? { done: true } : {});
+        });
+        const payload = { projectId: r.projectId, state: f.state.value, priority: Number(f.priority.value), decisionMode: f.mode.value, milestones };
+        if ((f.start.value || null) !== (e.startDate || null)) payload.startDate = f.start.value || null;
+        if ((f.target.value || null) !== (e.targetDate || null)) payload.targetDate = f.target.value || null;
+        if (f.reason.value.trim()) payload.reason = f.reason.value.trim();
+        return (await humanAction('epic.update', payload, 'Epic updated')) !== null;
+      }
+    );
+  }
+
+  function changeCard(c) {
+    const inContest = c.status === 'approved' && c.contestUntil && c.contestUntil > Date.now();
+    const canApprove = c.status === 'proposed' || inContest;
+    const canReject = c.status === 'assessing' || c.status === 'proposed' || inContest;
+    const proj = S.data.projects.find((p) => p.id === c.projectId);
+    return h(
+      'article',
+      { class: 'panel change-card', style: { padding: '14px', marginBottom: '12px' } },
+      h('div', { class: 'section-title' },
+        h('h3', null, h('span', { class: 'mono', text: c.id + ' ' }), c.title),
+        h('span', { class: 'meta' },
+          h('span', { class: 'chip ' + (CHANGE_CHIP[c.status] || ''), text: c.status }),
+          ' ', proj ? proj.name : c.projectId, ' · ', c.trigger.kind + (c.trigger.ref ? ' ' + c.trigger.ref : ''), ' · ', relTime(c.createdAt))),
+      h('p', { class: 'pre', text: c.reason }),
+      c.summary ? h('p', null, h('strong', { text: 'Impact: ' }), c.summary) : null,
+      (c.needsHuman || []).length ? h('p', null, h('span', { class: 'chip human', text: 'needs a human' }), ' because it ' + c.needsHuman.join('; ')) : null,
+      inContest ? h('p', null, h('span', { class: 'chip warn', text: 'agent-approved' }), ' applies at ' + clockTime(c.contestUntil) + ' unless you reject it') : null,
+      c.replanTicket && c.status === 'assessing' ? h('p', { class: 'muted', text: 'Re-plan ticket ' + c.replanTicket + ' is waiting for any agent (/c1:assess ' + c.id + ').' }) : null,
+      (c.changedRefs || []).length || (c.addedRefs || []).length ? h('p', { class: 'muted mono', text: [].concat((c.changedRefs || []).map((x) => '~ ' + x), (c.addedRefs || []).map((x) => '+ ' + x)).join('   ') }) : null,
+      c.impact && c.impact.length
+        ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+            h('thead', null, h('tr', null, ['Ticket', 'Was', 'Why', 'Verdict', 'Note'].map((x) => h('th', { scope: 'col', text: x })))),
+            h('tbody', null, c.impact.map((e) => h('tr', null,
+              h('td', null, h('span', { class: 'mono', text: e.ticketId + ' ' }), e.title),
+              h('td', null, h('span', { class: 'chip', text: e.statusAtOpen })),
+              h('td', { class: 'muted', text: e.why.join('; ') }),
+              h('td', null, e.verdict ? h('span', { class: 'chip ' + (['rework', 'revert', 'supersede', 'obsolete'].includes(e.verdict) ? 'warn' : 'good'), text: e.verdict + (e.group ? ' · ' + e.group : '') }) : h('span', { class: 'muted', text: 'pending' }), e.applied ? ' ✓' : ''),
+              h('td', { class: 'muted', text: e.note || (e.amend ? 'amends ' + Object.keys(e.amend).join(', ') : '') })
+            )))))
+        : h('p', { class: 'muted', text: 'No existing ticket is affected.' }),
+      (c.newTickets || []).length ? h('p', null, h('strong', { text: 'New tickets: ' }), c.newTickets.map((t) => (c.created && c.created[t.key] ? c.created[t.key] + ' ' : '') + t.title + (t.supersedes && t.supersedes.length ? ' (replaces ' + t.supersedes.join(', ') + ')' : '')).join(' · ')) : null,
+      c.scope ? h('p', null, h('strong', { text: 'Goal change: ' }), [c.scope.statement, (c.scope.definitionOfDone || []).map((d) => (typeof d === 'string' ? d : d.id + ': ' + d.text)).join('; ')].filter(Boolean).join(' · ')) : null,
+      canApprove || canReject
+        ? h('div', { class: 'actions' },
+            canApprove ? h('button', { class: 'btn primary', onclick: () => humanAction('change.approve', { changeId: c.id }, c.id + (inContest ? ' applies now' : ' approved')) }, icon('check'), inContest ? 'Apply now' : 'Approve and apply') : null,
+            canReject ? h('button', { class: 'btn', onclick: () => openModal('Reject ' + c.id, [ofield('Why', h('textarea', { name: 'reason', rows: '3' }))], 'Reject', async (form) => (await humanAction('change.reject', { changeId: c.id, reason: form.elements.reason.value }, c.id + ' rejected')) !== null, { danger: true }) }, icon('x'), 'Reject') : null)
+        : null
+    );
+  }
+
+  function changesTab() {
+    const all = S.data.changes || [];
+    const open = all.filter((c) => OPEN_CHANGES.includes(c.status));
+    const closed = all.filter((c) => !OPEN_CHANGES.includes(c.status)).slice(0, 20);
+    return h('div', { class: 'stack' },
+      h('section', { class: 'panel', style: { padding: '16px' } },
+        h('div', { class: 'section-title' }, h('h2', { text: 'Change requests' }), h('span', { class: 'meta', text: open.length + ' open' })),
+        h('p', { class: 'muted', style: { maxWidth: '80ch' }, text: 'New or changed inputs and decisions open a change request with a re-plan ticket any agent can pick up. Agents assess and may approve on their own; you step in when a change reworks merged code, moves the goal or stops work in progress, or whenever you want to steer.' })),
+      open.length ? open.map(changeCard) : h('p', { class: 'muted', style: { padding: '0 4px' }, text: 'Nothing open.' }),
+      closed.length ? h('h3', { style: { margin: '16px 4px 8px' }, text: 'Recently decided' }) : null,
+      closed.map(changeCard));
+  }
+
+  function openInput(i) {
+    C1.Api.get('/inputs/' + encodeURIComponent(i.id))
+      .then((r) => openModal(i.id + ' · ' + i.title + ' v' + r.version.version + ' (' + r.version.status + ')', [
+        h('p', { class: 'muted mono', text: r.version.sections.map((s) => '#' + s.anchor).join('  ') }),
+        h('pre', { class: 'input-body', text: r.version.body }),
+      ], 'Close', async () => true, { wide: true }))
+      .catch((e) => toast(e.message || String(e), 'error'));
+  }
+
+  function openNewInput() {
+    openModal('Add an input', [
+      ofield('Kind', h('select', { name: 'kind' }, ['prd', 'feedback', 'research', 'note'].map((k) => h('option', { value: k, text: k })))),
+      ofield('Title', h('input', { name: 'title', required: true })),
+      h('fieldset', { class: 'field' }, h('legend', { text: 'Epics it is for (each gets a re-plan when you approve it)' }), S.data.projects.filter((p) => p.status !== 'archived').map((p) => h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'pid', value: p.id }), ' ' + p.name))),
+      ofield('Markdown (headings become the anchors tickets cite)', h('textarea', { name: 'body', rows: '12', required: true })),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'approve', checked: true }), ' Approve it now'),
+    ], 'Add', async (form) => {
+      const f = form.elements;
+      const pids = Array.prototype.slice.call(form.querySelectorAll('input[name=pid]:checked')).map((x) => x.value);
+      try {
+        const r = await C1.Api.post('/inputs', { kind: f.kind.value, title: f.title.value, body: f.body.value, projectIds: pids });
+        if (f.approve.checked) await humanAction('input.approve', { inputId: r.input.id }, r.input.id + ' approved');
+        else { toast(r.input.id + ' added as a draft'); await loadBoard(); }
+        return true;
+      } catch (e) {
+        toast(e.message || String(e), 'error');
+        return false;
+      }
+    }, { wide: true });
+  }
+
+  function openNewDecision() {
+    const accepted = (S.data.records || []).filter((r) => r.status === 'accepted');
+    openModal('Record a decision', [
+      ofield('Epic', h('select', { name: 'pid' }, h('option', { value: '', text: 'Whole hub' }), S.data.projects.map((p) => h('option', { value: p.id, selected: p.id === S.selectedProjectId, text: p.name })))),
+      ofield('Question', h('input', { name: 'title', required: true })),
+      ofield('Decision', h('textarea', { name: 'choice', rows: '2', required: true })),
+      ofield('Why', h('textarea', { name: 'reason', rows: '3' })),
+      ofield('Replaces an earlier decision', h('select', { name: 'sup' }, h('option', { value: '', text: '—' }), accepted.map((r) => h('option', { value: r.id, text: r.id + ' ' + r.title })))),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'replan', checked: true }), ' Re-plan the epic for it (opens a change request with a re-plan ticket)'),
+    ], 'Record', async (form) => {
+      const f = form.elements;
+      const payload = { title: f.title.value, choice: f.choice.value, reason: f.reason.value, replan: f.replan.checked };
+      if (f.pid.value) payload.projectId = f.pid.value;
+      if (f.sup.value) payload.supersedes = f.sup.value;
+      return (await humanAction('decision.record', payload, 'Decision recorded')) !== null;
+    });
+  }
+
+  function intentTab() {
+    const inputs = S.data.inputs || [];
+    const records = S.data.records || [];
+    return h('div', { class: 'stack' },
+      h('section', { class: 'panel', style: { padding: '16px' } },
+        h('div', { class: 'section-title' }, h('h2', { text: 'Inputs' }), h('button', { class: 'btn primary', onclick: openNewInput }, icon('plus'), 'Add input')),
+        inputs.length
+          ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+              h('thead', null, h('tr', null, ['Id', 'Kind', 'Title', 'Status', 'Version', 'Epics', ''].map((x) => h('th', { scope: 'col', text: x })))),
+              h('tbody', null, inputs.map((i) => h('tr', null,
+                h('td', { class: 'mono', text: i.id }), h('td', { text: i.kind }), h('td', null, h('button', { class: 'linkish', onclick: () => openInput(i) }, i.title)),
+                h('td', null, h('span', { class: 'chip ' + (i.status === 'approved' ? 'good' : 'warn'), text: i.status })),
+                h('td', { class: 'mono', text: 'v' + (i.approvedVersion || '–') + ' / v' + i.latestVersion }),
+                h('td', { text: i.projectIds.join(', ') }),
+                h('td', null, (i.approvedVersion || 0) < i.latestVersion ? h('button', { class: 'btn small', onclick: () => humanAction('input.approve', { inputId: i.id }, i.id + ' v' + i.latestVersion + ' approved') }, 'Approve v' + i.latestVersion) : null))))))
+          : h('p', { class: 'muted', text: 'PRDs, customer feedback, research and notes live here. Tickets cite their sections, so a new version shows which work it changes.' })),
+      h('section', { class: 'panel', style: { padding: '16px' } },
+        h('div', { class: 'section-title' }, h('h2', { text: 'Decision log' }), h('button', { class: 'btn primary', onclick: openNewDecision }, icon('plus'), 'Record decision')),
+        records.length
+          ? h('div', { class: 'table-wrap' }, h('table', { class: 'data' },
+              h('thead', null, h('tr', null, ['Id', 'Epic', 'Question', 'Decision', 'Why', 'By', 'When'].map((x) => h('th', { scope: 'col', text: x })))),
+              h('tbody', null, records.map((r) => h('tr', { class: r.status === 'superseded' ? 'muted' : '' },
+                h('td', { class: 'mono' }, r.id, r.status === 'superseded' ? h('div', { class: 'chip', text: 'by ' + (r.supersededBy || '—') }) : null),
+                h('td', { text: r.projectId || 'hub' }), h('td', { text: r.title }), h('td', { text: r.choice }), h('td', { class: 'muted', text: r.reason }),
+                h('td', { text: r.by + ' · ' + r.source }), h('td', { text: relTime(r.at) }))))))
+          : h('p', { class: 'muted', text: 'No decisions yet. Votes, closed escalations, applied change requests and moved dates are recorded here too.' })));
+  }
+
+  function logTab() {
+    const p = project();
+    if (!p) return h('p', { class: 'muted', text: 'No epic selected.' });
+    S.data.log = S.data.log || {};
+    const entries = S.data.log[p.id];
+    if (!entries) {
+      C1.Api.get('/projects/' + encodeURIComponent(p.id) + '/log').then((r) => { S.data.log[p.id] = r.entries || []; render(); }).catch((e) => toast(e.message || String(e), 'error'));
+      return h('p', { class: 'muted', text: 'Loading the change log…' });
+    }
+    return h('section', { class: 'panel', style: { padding: '16px' } },
+      h('div', { class: 'section-title' }, h('h2', { text: 'Change log · ' + p.name }), h('span', { class: 'meta', text: entries.length + ' entries' })),
+      entries.length
+        ? h('ol', { class: 'changelog' }, entries.map((e) => h('li', null,
+            h('span', { class: 'mono muted', text: new Date(e.at).toISOString().slice(0, 16).replace('T', ' ') }),
+            h('span', { class: 'chip ' + (e.kind === 'decision' ? 'human' : /applied/.test(e.kind) ? 'good' : /rejected/.test(e.kind) ? 'bad' : e.kind === 'scope' ? 'accent' : ''), text: e.kind }),
+            h('span', { text: e.text }), e.by ? h('span', { class: 'muted', text: ' — ' + e.by }) : null)))
+        : h('p', { class: 'muted', text: 'Nothing has changed in this epic yet.' }));
   }
 
   /* ---- all projects strip */
@@ -2585,6 +2855,13 @@
     if (b.rules) d.rules = normalizeRules(b.rules);
     else d.rules = normalizeRules(await C1.Api.rules(S.selectedProjectId).catch(() => null));
     if (b.settings) d.settings = b.settings;
+    d.mode = b.mode || 'event';
+    d.roadmap = b.roadmap || [];
+    d.changes = b.changes || [];
+    d.inputs = b.inputs || [];
+    d.records = b.records || [];
+    d.catalog = b.catalog || [];
+    d.log = {};
     if (typeof b.lastSeq === 'number') d.lastSeq = Math.max(d.lastSeq, b.lastSeq);
     if (Array.isArray(b.events)) d.events = b.events.slice(-100);
     // Tickets of the other projects feed the all-projects strip.
@@ -2684,7 +2961,7 @@
       S.joinCode = null;
       schedule('tokens', refreshTokens);
     }
-    if (/^(project|goal|phase|plan|seat|session|participant|settings)\./.test(t) || env.stream === 'presence') schedule('board', loadBoard);
+    if (/^(project|goal|phase|plan|seat|session|participant|settings|change|input|epic|repo)\./.test(t) || t === 'decision.recorded' || env.stream === 'presence') schedule('board', loadBoard);
     schedule('render', async () => null);
   }
 

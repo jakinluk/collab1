@@ -3,6 +3,7 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   QueryCommand,
+  ScanCommand,
   TransactWriteCommand,
   UpdateCommand,
   type TransactWriteCommandInput,
@@ -20,21 +21,79 @@ export interface Versioned<T> {
 }
 
 const MAX_TX_ITEMS = 100;
+const DAY_S = 86_400;
+
+/**
+ * How long records live. Event mode: every record expires a fixed number of days after its last write.
+ * Ongoing mode: work records (projects, tickets, inputs, decisions, change requests, seats) never expire;
+ * only traffic-like records do.
+ */
+export interface Retention {
+  mode: 'event' | 'ongoing';
+  dataTtlDays: number;
+  eventDays: number;
+}
+
+export const retentionFrom = (r: number | Retention): Retention =>
+  typeof r === 'number' ? { mode: 'event', dataTtlDays: r, eventDays: r } : r;
 
 export class Store {
   private readonly doc: DynamoDBDocumentClient;
+  readonly retention: Retention;
 
   constructor(
     private readonly table: string,
-    private readonly ttlDays: number,
+    retention: number | Retention,
     doc?: DynamoDBDocumentClient,
     private readonly now: () => number = Date.now,
   ) {
+    this.retention = retentionFrom(retention);
     this.doc = doc ?? DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
   }
 
   ttl(): number {
-    return Math.floor(this.now() / 1000) + this.ttlDays * 86_400;
+    return Math.floor(this.now() / 1000) + this.retention.dataTtlDays * DAY_S;
+  }
+
+  /** The expiry (epoch seconds) a record should carry, or undefined to keep it. */
+  ttlFor(keys: Pick<Keys, 'PK'>, value?: Record<string, unknown>): number | undefined {
+    const r = this.retention;
+    const nowS = Math.floor(this.now() / 1000);
+    if (r.mode === 'event') return nowS + r.dataTtlDays * DAY_S;
+    const pk = keys.PK;
+    if (pk === 'EVENT') return nowS + r.eventDays * DAY_S;
+    if (pk.startsWith('JOIN#')) return nowS + DAY_S;
+    if (pk.startsWith('PROP#')) return nowS + 30 * DAY_S;
+    if (pk.startsWith('LOCK#')) return undefined;
+    if (pk.startsWith('TOKEN#')) {
+      const exp = typeof value?.expiresAt === 'number' ? Math.floor(value.expiresAt / 1000) : nowS;
+      return exp + 7 * DAY_S;
+    }
+    return undefined;
+  }
+
+  /** Brings every stored record in line with the current retention, for example after a switch to ongoing mode. */
+  async applyRetention(): Promise<{ scanned: number; kept: number; expiring: number }> {
+    const stats = { scanned: 0, kept: 0, expiring: 0 };
+    let start: Record<string, unknown> | undefined;
+    do {
+      const r = await this.doc.send(new ScanCommand({ TableName: this.table, ExclusiveStartKey: start }));
+      for (const item of r.Items ?? []) {
+        stats.scanned++;
+        const want = this.ttlFor({ PK: String(item.PK) }, item);
+        if (want === undefined) {
+          stats.kept++;
+          if (item.ttl === undefined) continue;
+          await this.doc.send(new UpdateCommand({ TableName: this.table, Key: { PK: item.PK, SK: item.SK }, UpdateExpression: 'REMOVE #t', ExpressionAttributeNames: { '#t': 'ttl' } }));
+        } else {
+          stats.expiring++;
+          if (typeof item.ttl === 'number' && item.ttl <= want) continue;
+          await this.doc.send(new UpdateCommand({ TableName: this.table, Key: { PK: item.PK, SK: item.SK }, UpdateExpression: 'SET #t = :t', ExpressionAttributeNames: { '#t': 'ttl' }, ExpressionAttributeValues: { ':t': want } }));
+        }
+      }
+      start = r.LastEvaluatedKey;
+    } while (start);
+    return stats;
   }
 
   async get<T>(keys: Keys, consistent = true): Promise<Versioned<T> | undefined> {
@@ -106,7 +165,8 @@ export class Store {
   }
 
   put(keys: Keys, value: object, expectedV?: number): TxItem {
-    const item: Record<string, unknown> = { ...value, ...keys, ttl: this.ttl(), _v: (expectedV ?? 0) + 1 };
+    const ttl = this.ttlFor(keys, value as Record<string, unknown>);
+    const item: Record<string, unknown> = { ...value, ...keys, ...(ttl === undefined ? {} : { ttl }), _v: (expectedV ?? 0) + 1 };
     if (expectedV === undefined) return { Put: { TableName: this.table, Item: item } };
     if (expectedV === 0) return { Put: { TableName: this.table, Item: item, ConditionExpression: 'attribute_not_exists(PK)' } };
     return {
@@ -155,7 +215,8 @@ export class Store {
             },
           ]
         : [];
-      const eventOps: TxItem[] = finals.map((e) => ({ Put: { TableName: this.table, Item: { ...e, ...K.event(e.seq), ttl: this.ttl() } } }));
+      const eventTtl = this.ttlFor({ PK: 'EVENT' });
+      const eventOps: TxItem[] = finals.map((e) => ({ Put: { TableName: this.table, Item: { ...e, ...K.event(e.seq), ...(eventTtl === undefined ? {} : { ttl: eventTtl }) } } }));
       try {
         await this.doc.send(new TransactWriteCommand({ TransactItems: [...counterOp, ...ops, ...eventOps] }));
         return finals;

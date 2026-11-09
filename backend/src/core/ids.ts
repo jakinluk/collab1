@@ -5,7 +5,7 @@ export const numericPart = (id: string): number => {
   return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
 };
 
-export const prefixedId = (prefix: 'T' | 'E' | 'D' | 'K' | 'P', n: number): string => `${prefix}${n}`;
+export const prefixedId = (prefix: 'T' | 'E' | 'D' | 'K' | 'P' | 'I' | 'R' | 'CR', n: number): string => `${prefix}${n}`;
 
 export const slugify = (name: string): string => {
   const s = name
@@ -27,5 +27,5 @@ export const branchSlug = (title: string): string =>
     .slice(0, 40)
     .replace(/-+$/g, '') || 'work';
 
-export const ticketBranch = (projectId: string, ticketId: string, title: string): string =>
-  `hack/${projectId}/${ticketId}-${branchSlug(title)}`;
+export const ticketBranch = (projectId: string, ticketId: string, title: string, prefix = 'hack/'): string =>
+  `${prefix}${projectId}/${ticketId}-${branchSlug(title)}`;

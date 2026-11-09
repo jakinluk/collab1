@@ -43,9 +43,14 @@ export class FakeDynamo {
       item[attr] = Number(item[attr] ?? 0) + Number(values[m[2]]);
       return item;
     }
-    m = /^SET (\w+) = (:\w+)$/.exec(expr);
+    m = /^SET (#?\w+) = (:\w+)$/.exec(expr);
     if (m) {
-      item[m[1]] = values[m[2]];
+      item[m[1].startsWith('#') ? names[m[1]] : m[1]] = values[m[2]];
+      return item;
+    }
+    m = /^REMOVE (#\w+)$/.exec(expr);
+    if (m) {
+      delete item[names[m[1]]];
       return item;
     }
     throw new Error(`fake: unsupported update ${expr}`);
@@ -74,6 +79,8 @@ export class FakeDynamo {
       }
       case 'QueryCommand':
         return { Items: this.query(input) };
+      case 'ScanCommand':
+        return { Items: [...this.items.values()].map((i) => structuredClone(i)) };
       case 'UpdateCommand': {
         const k = key(input.Key as Item);
         const next = this.update(input, this.items.get(k));

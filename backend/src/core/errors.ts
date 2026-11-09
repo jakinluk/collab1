@@ -25,5 +25,6 @@ export const httpStatusFor = (code: ErrorCode): number =>
     not_ready: 409,
     path_conflict: 409,
     rate_limited: 429,
+    stale: 409,
     update_required: 426,
   })[code];

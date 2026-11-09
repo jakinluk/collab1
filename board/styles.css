@@ -456,3 +456,24 @@ html.projector .board-layout { grid-template-columns: minmax(0, 1fr) 400px; }
 .release-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 20px; padding: 10px 14px; border: 1px solid var(--accent, #0f6aa0); border-radius: 10px; background: var(--panel-2); font-size: 0.92rem; }
 .release-banner .btn { margin-left: auto; }
 .release-banner .btn + .btn { margin-left: 0; }
+
+/* ongoing mode */
+.roadmap .rm-row { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.rm-name { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.rm-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 0.85rem; }
+.rm-track { position: relative; height: 34px; background: var(--panel-2); border-radius: 8px; }
+.rm-today { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--muted); }
+.rm-bar { position: absolute; top: 9px; height: 16px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 22%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); overflow: hidden; }
+.rm-done { height: 100%; background: color-mix(in srgb, var(--st-done) 70%, transparent); }
+.rm-nodates { position: absolute; left: 10px; top: 8px; font-size: 0.85rem; }
+.rm-ms { position: absolute; top: 10px; width: 12px; height: 12px; margin-left: -6px; transform: rotate(45deg); background: var(--panel); border: 2px solid var(--accent); }
+.rm-ms.done { background: var(--st-done); border-color: var(--st-done); }
+.rm-cr { position: absolute; bottom: 1px; margin-left: -5px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--st-progress); }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-align: left; }
+.btn.small { padding: 3px 10px; font-size: 0.82rem; }
+.change-card .pre, .input-body { white-space: pre-wrap; }
+.input-body { max-height: 60vh; overflow: auto; background: var(--panel-2); padding: 12px; border-radius: 8px; font-family: var(--font-mono); font-size: 0.82rem; }
+.changelog { list-style: none; margin: 0; padding: 0; }
+.changelog li { display: grid; grid-template-columns: 140px 130px 1fr auto; gap: 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line); }
+.stack > * + * { margin-top: 12px; }
+.check { display: inline-flex; gap: 6px; align-items: center; margin: 4px 12px 4px 0; }

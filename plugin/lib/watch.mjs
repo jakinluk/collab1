@@ -35,11 +35,11 @@ export async function watch({ print = (l) => process.stdout.write(l + '\n'), Web
     try {
       const me = await api.get('/me');
       ctx.projectId = me.projectId ?? ctx.projectId;
+      ctx.projects = me.mode === 'ongoing' ? (me.projects ?? me.seat?.projects ?? []) : [];
       ctx.lanes = me.seat?.lanes ?? ctx.lanes;
-      if (ctx.projectId) {
-        const { tickets } = await api.get(`/projects/${enc(ctx.projectId)}/tickets`);
-        ctx.myTickets = new Set((tickets ?? []).filter((t) => t.booking?.seatId === ctx.seatId && WORKING.has(t.status)).map((t) => t.id));
-      }
+      const pids = [...new Set([ctx.projectId, ...ctx.projects].filter(Boolean))];
+      const lists = await Promise.all(pids.map((pid) => api.get(`/projects/${enc(pid)}/tickets`).then((r) => r.tickets ?? [])));
+      ctx.myTickets = new Set(lists.flat().filter((t) => t.booking?.seatId === ctx.seatId && WORKING.has(t.status)).map((t) => t.id));
     } catch {
       /* keep the previous context */
     }

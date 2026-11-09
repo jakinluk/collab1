@@ -8,7 +8,7 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 const lanes = z.array(z.string().trim().min(1).max(40)).max(20);
 
 export const ticketStatusSchema = z.enum(['planned', 'ready', 'booked', 'in_progress', 'review', 'done', 'blocked', 'dropped']);
-export const ticketTypeSchema = z.enum(['contract', 'slice', 'glue', 'test', 'review', 'spike', 'chore']);
+export const ticketTypeSchema = z.enum(['contract', 'slice', 'glue', 'test', 'review', 'spike', 'chore', 'rework', 'replan']);
 export const workModeSchema = z.enum(['solo', 'subagents', 'multi_session', 'factory']);
 export const resolverSchema = z.enum(['self', 'any_agent', 'owner', 'agent_quorum', 'any_human', 'human_quorum', 'human_named']);
 export const quorumRuleSchema = z.enum(['majority', 'two_thirds', 'unanimous', 'consent']);
@@ -64,6 +64,12 @@ const projectMeta = {
   tags: z.array(z.string().trim().min(1).max(40)).max(20),
 };
 
+export const refSchema = z.string().regex(/^(dod:d\d+|input:I\d+(#[a-z0-9][a-z0-9-]{0,60})?|decision:R\d+)$/, 'use dod:d1, input:I1#anchor, input:I1 or decision:R1');
+const refs = z.array(refSchema).max(30);
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'use a date like 2027-03-31');
+const milestoneId = z.string().regex(/^m\d{1,4}$/, 'milestone ids look like m1');
+const pathList = z.array(z.string().min(1).max(300)).max(300);
+
 export const acceptanceSchema = z.object({
   cmd: z.string().max(500).optional(),
   criterion: text(500),
@@ -83,6 +89,8 @@ export const ticketInputSchema = z.object({
   priority: z.number().int().min(0).max(1000).default(100),
   wave: z.number().int().min(0).max(100).optional(),
   dodRefs: z.array(z.number().int().min(0).max(100)).max(20).optional(),
+  refs: refs.optional(),
+  milestone: milestoneId.optional(),
   status: z.enum(['ready', 'planned']).optional(),
 });
 export type TicketInput = z.infer<typeof ticketInputSchema>;
@@ -106,6 +114,8 @@ export const patchMeSchema = z.object({
     .optional(),
   machine: z.string().max(120).optional(),
   pinProject: id.optional(),
+  follow: z.array(id).max(20).optional(),
+  unfollow: z.array(id).max(20).optional(),
 });
 
 export const sessionSchema = z.object({
@@ -156,6 +166,94 @@ export const reviewDoneSchema = z.object({
   outcome: z.enum(['merged', 'changes_requested']),
   note: z.string().max(2000).optional(),
   prUrl: z.string().url().max(500).optional(),
+  mergeSha: z.string().regex(/^[0-9a-f]{7,40}$/, 'a git commit sha').optional(),
+  files: pathList.optional(),
+});
+
+export const rotateSchema = z.object({ token: z.string().min(10).max(200) });
+
+export const inputKindSchema = z.enum(['prd', 'feedback', 'research', 'note']);
+export const MAX_INPUT_BYTES = 200_000;
+const inputBody = z.string().min(1).refine((b) => Buffer.byteLength(b, 'utf8') <= MAX_INPUT_BYTES, `inputs are limited to ${MAX_INPUT_BYTES / 1000} KB`);
+
+export const inputCreateSchema = z.object({
+  kind: inputKindSchema,
+  title: text(200),
+  body: inputBody,
+  projectIds: z.array(id).max(20).default([]),
+  note: z.string().max(1000).optional(),
+});
+
+export const inputVersionSchema = z.object({ body: inputBody, note: z.string().max(1000).optional() });
+
+const amendSchema = z.object({
+  title: text(200).optional(),
+  description: z.string().max(8000).optional(),
+  acceptance: z.array(acceptanceSchema).min(1).max(20).optional(),
+  refs: refs.optional(),
+  pathsOwned: z.array(z.string().min(1).max(300)).min(1).max(50).optional(),
+  pathsRead: z.array(z.string().min(1).max(300)).max(50).optional(),
+  milestone: milestoneId.optional(),
+  priority: z.number().int().min(0).max(1000).optional(),
+});
+
+export const verdictSchema = z.enum(['keep', 'amend', 'supersede', 'obsolete', 'defer', 'rework', 'revert']);
+
+export const changeTicketSchema = z.object({
+  key: z.string().regex(/^[a-z0-9-]{1,30}$/, 'a short key such as digest-1, used by deps and supersedes'),
+  repo: z.string().regex(/^[A-Za-z0-9._-]{1,60}$/),
+  title: text(200),
+  description: z.string().max(8000).default(''),
+  type: ticketTypeSchema.default('slice'),
+  lanes: lanes.default([]),
+  deps: z.array(z.string().regex(/^[A-Za-z0-9_-]{1,40}$/)).max(50).default([]),
+  pathsOwned: z.array(z.string().min(1).max(300)).min(1).max(50),
+  pathsRead: z.array(z.string().min(1).max(300)).max(50).optional(),
+  acceptance: z.array(acceptanceSchema).min(1).max(20),
+  priority: z.number().int().min(0).max(1000).default(100),
+  refs: refs.optional(),
+  milestone: milestoneId.optional(),
+  supersedes: z.array(z.string().regex(/^T\d+$/)).max(20).optional(),
+});
+
+export const scopePatchSchema = z.object({
+  statement: text(1000).optional(),
+  definitionOfDone: z.array(z.union([text(500), z.object({ id: z.string().regex(/^d\d+$/), text: text(500) })])).min(1).max(30).optional(),
+  nonGoals: z.array(text(500)).max(30).optional(),
+  refs: refs.optional(),
+});
+
+export const changeCreateSchema = z.object({
+  projectId: id,
+  title: text(200),
+  reason: text(4000),
+  changedRefs: refs.default([]),
+  ticketIds: z.array(z.string().regex(/^T\d+$/)).max(200).optional(),
+  milestone: milestoneId.optional(),
+  repo: z.string().regex(/^[A-Za-z0-9._-]{1,60}$/).optional(),
+  contractPaths: z.array(z.string().min(1).max(300)).max(30).optional(),
+  scope: scopePatchSchema.optional(),
+  /** What the change means for the epic, in a few sentences; it goes into the change log. */
+  summary: z.string().max(4000).optional(),
+});
+
+export const changeAssessSchema = z.object({
+  impact: z
+    .array(
+      z.object({
+        ticketId: z.string().regex(/^T\d+$/),
+        verdict: verdictSchema,
+        note: z.string().max(2000).optional(),
+        amend: amendSchema.optional(),
+        group: z.string().regex(/^[a-z0-9-]{1,30}$/).optional(),
+        acceptance: z.array(acceptanceSchema).max(20).optional(),
+      }),
+    )
+    .max(300),
+  newTickets: z.array(changeTicketSchema).max(100).default([]),
+  scope: scopePatchSchema.optional(),
+  /** What the change means for the epic, in a few sentences; it goes into the change log. */
+  summary: z.string().max(4000).optional(),
 });
 
 export const escalationCreateSchema = z.object({
@@ -234,6 +332,14 @@ export const humanActionSchema = z.enum([
   'settings.set',
   'token.worker',
   'release.publish',
+  'epic.update',
+  'repo.set',
+  'repo.remove',
+  'input.approve',
+  'decision.record',
+  'change.approve',
+  'change.reject',
+  'retention.apply',
 ]);
 
 export const proposalSchema = z.object({
@@ -265,7 +371,18 @@ export const actionPayloadSchemas = {
   'project.create': z.object({
     id: id.optional(),
     name: text(80),
-    repos: reposSchema,
+    repos: reposSchema.optional(),
+    /** Names of repos from the hub's catalog (ongoing mode). */
+    repoRefs: z.array(z.string().regex(/^[A-Za-z0-9._-]{1,60}$/)).max(10).optional(),
+    epic: z
+      .object({
+        state: z.enum(['proposed', 'planned', 'in_progress']).optional(),
+        startDate: isoDate.optional(),
+        targetDate: isoDate.optional(),
+        owners: z.array(id).max(10).optional(),
+        priority: z.number().int().min(0).max(1000).optional(),
+      })
+      .optional(),
     lanes: lanes.default([]),
     description: projectMeta.description,
     demo: projectMeta.demo,
@@ -287,9 +404,10 @@ export const actionPayloadSchemas = {
   'goal.set': z.object({
     projectId: id,
     statement: text(1000),
-    definitionOfDone: z.array(text(500)).min(1).max(30),
+    definitionOfDone: z.array(z.union([text(500), z.object({ id: z.string().regex(/^d\d+$/), text: text(500) })])).min(1).max(30),
     demoScript: z.string().max(8000).default(''),
     nonGoals: z.array(text(500)).max(30).default([]),
+    refs: refs.optional(),
     contact: z.string().max(40).optional(),
   }),
   'plan.load': z.object({ projectId: id, tickets: z.array(ticketInputSchema).min(1).max(200) }),
@@ -302,9 +420,44 @@ export const actionPayloadSchemas = {
     maxBookingsPerSeat: z.number().int().min(1).max(50).nullable().optional(),
     defaultContestMin: z.number().int().min(1).max(240).optional(),
     toolRepoUrl: z.string().trim().min(1).max(300).nullable().optional(),
+    branchPrefix: z.string().regex(/^[A-Za-z0-9._-]{1,30}\/$/, 'end the prefix with /, for example c1/').nullable().optional(),
+    agentActions: z.array(z.lazy(() => humanActionSchema)).max(40).nullable().optional(),
   }),
   'token.worker': z.object({ workerId: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/) }),
   'release.publish': z.object({ version: semver, notes: text(500), minimum: semver.optional() }),
+  'epic.update': z.object({
+    projectId: id,
+    state: z.enum(['proposed', 'planned', 'in_progress', 'release', 'done', 'paused', 'archived']).optional(),
+    startDate: isoDate.nullable().optional(),
+    targetDate: isoDate.nullable().optional(),
+    milestones: z
+      .array(z.object({ id: milestoneId.optional(), name: text(120), targetDate: isoDate.optional(), done: z.boolean().optional() }))
+      .max(30)
+      .optional(),
+    owners: z.array(id).min(1).max(10).optional(),
+    priority: z.number().int().min(0).max(1000).optional(),
+    decisionMode: z.enum(['owners', 'open']).optional(),
+    /** Required when a target date moves: recorded as a decision. */
+    reason: z.string().max(2000).optional(),
+  }),
+  'repo.set': repoSchema,
+  'repo.remove': z.object({ name: z.string().regex(/^[A-Za-z0-9._-]{1,60}$/) }),
+  'input.approve': z.object({ inputId: z.string().regex(/^I\d+$/), version: z.number().int().min(1).optional() }),
+  'decision.record': z.object({
+    projectId: id.optional(),
+    title: text(300),
+    choice: text(2000),
+    reason: z.string().max(4000).default(''),
+    refs: refs.default([]),
+    supersedes: z.string().regex(/^R\d+$/).optional(),
+    /** false: record it without opening a re-plan for its epic. */
+    replan: z.boolean().default(true),
+    repo: z.string().regex(/^[A-Za-z0-9._-]{1,60}$/).optional(),
+    contractPaths: z.array(z.string().min(1).max(300)).max(30).optional(),
+  }),
+  'change.approve': z.object({ changeId: z.string().regex(/^CR\d+$/) }),
+  'change.reject': z.object({ changeId: z.string().regex(/^CR\d+$/), reason: z.string().max(2000).default('') }),
+  'retention.apply': z.object({}).default({}),
 } as const;
 
 export type ActionPayloads = { [K in keyof typeof actionPayloadSchemas]: z.infer<(typeof actionPayloadSchemas)[K]> };

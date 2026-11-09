@@ -4,6 +4,7 @@ import { runHook } from './hooks.mjs';
 import { parseArgs } from './util.mjs';
 import { watch } from './watch.mjs';
 import * as T from './tooling.mjs';
+import * as O from './ongoing.mjs';
 import { clientVersion } from './version.mjs';
 
 export const HELP = `c1 — CollabOne CLI (talks to the CollabOne hub with this Mac's agent token)
@@ -32,7 +33,7 @@ Tickets
   c1 ticket next [--n 3] [--lanes a,b] [--worker id] [--session id]
   c1 ticket book <id> | heartbeat <id> | start <id> | review-ready <id> --pr <url> | block <id> --note "…"
   c1 ticket release <id> --reason "…" [--failed]
-  c1 review next | c1 review done <id> --outcome merged|changes_requested [--note "…"]
+  c1 review next | c1 review done <id> --outcome merged|changes_requested [--note "…"] [--sha <merge sha> --files "a,b"]
 
 Blockers and votes
   c1 raise blocker|issue|urgent|help --rule B3 --summary "…" [--detail "…" | --detail-file f] [--ticket T1] [--option "…"]
@@ -43,6 +44,21 @@ Knowledge
   c1 share tip "…" [--name n] [--tags a,b] [--project id]
   c1 share playbook <file.md> --name "…" | c1 share skill <dir> [--name n] | c1 retire <kid>
   c1 kb search <words> | c1 sync
+
+Ongoing mode (day-to-day work: epics, inputs, decisions, change requests)
+  c1 catalog list | propose --name n --url <git url> [--branch main] [--contract-path p] [--file repo.json] | remove <name>
+  c1 epic list | show [<id>] | log [<id>] | follow <id> | unfollow <id>
+  c1 epic propose-new --name "…" --repo <catalog repo> [--target YYYY-MM-DD] [--priority n] [--owner seat]
+  c1 epic update [<id>] [--state planned|in_progress|release|done|paused|archived] [--target date --reason "…"]
+                 [--milestone "name@date"] [--priority n] [--owner seat] [--mode owners|open] [--file patch.json]
+  c1 input list | show <I1> [--version n] [--sections] | add <file.md> --kind prd|feedback|research|note --title "…"
+  c1 input version <I1> <file.md> [--note "…"] | approve <I1> [--version n]
+  c1 decision list | show <R1> | propose --title "…" --choice "…" [--reason "…"] [--supersedes R1] [--ref r]
+                     [--contract-repo app --contract-path libs/contracts/**] [--hub]
+  c1 change list [--status s|--all] | show <CR1> | open --title "…" --reason "…" [--ref r] [--ticket T1,T2] [--milestone m1]
+  c1 change assess <CR1> --file assessment.json | rebase <CR1> | approve <CR1> | reject <CR1> --reason "…"
+  c1 token rotate | c1 export [--out dir] | c1 retention apply   (after switching a hub from event to ongoing)
+  Refs on tickets: dod:d1, input:I1#anchor, input:I1, decision:R1 (field "refs" in ticket JSON).
 
 CollabOne itself
   c1 bug "what went wrong" [--detail "…"] [--area plugin|board|backend|docs] [--urgent]   report a problem with CollabOne
@@ -83,6 +99,14 @@ const COMMANDS = {
   bug: T.bug,
   update: T.update,
   release: T.release,
+  catalog: O.catalog,
+  epic: O.epic,
+  input: O.input,
+  decision: O.decision,
+  change: O.change,
+  token: (p) => O.token(p),
+  export: O.exportHub,
+  retention: (p) => O.retention(p),
 };
 
 export async function main(argv) {

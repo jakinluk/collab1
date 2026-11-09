@@ -24,7 +24,14 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 
 export interface C1StackProps extends StackProps {
-  eventEndsAt: string;
+  /** event: a hackathon with an end date. ongoing: day-to-day work; work records never expire. */
+  mode: 'event' | 'ongoing';
+  /** Required in event mode. */
+  eventEndsAt?: string;
+  /** Ongoing mode: agent token lifetime, event-log retention and Lambda log retention. */
+  tokenTtlDays: number;
+  eventRetentionDays: number;
+  logRetentionDays: number;
   domainPrefix: string;
   dataTtlDays: number;
   removalPolicy: RemovalPolicy;
@@ -93,7 +100,7 @@ export class C1Stack extends Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
-      lifecycleRules: [{ expiration: Duration.days(props.dataTtlDays) }],
+      lifecycleRules: props.mode === 'event' ? [{ expiration: Duration.days(props.dataTtlDays) }] : [],
       removalPolicy: props.removalPolicy,
       autoDeleteObjects: props.removalPolicy === RemovalPolicy.DESTROY,
     });
@@ -129,12 +136,15 @@ export class C1Stack extends Stack {
       memorySize: memory,
       timeout: Duration.seconds(timeout),
       bundling: { minify: true, sourceMap: true, target: 'node22', externalModules: [], format: nodejs.OutputFormat.CJS },
-      logGroup: new logs.LogGroup(this, `${name}Logs`, { retention: logs.RetentionDays.TWO_WEEKS, removalPolicy: RemovalPolicy.DESTROY }),
+      logGroup: new logs.LogGroup(this, `${name}Logs`, { retention: props.mode === 'event' ? logs.RetentionDays.TWO_WEEKS : (props.logRetentionDays as logs.RetentionDays), removalPolicy: RemovalPolicy.DESTROY }),
       environment: env ?? {
         NODE_OPTIONS: '--enable-source-maps',
         TABLE_NAME: table.tableName,
         DATA_TTL_DAYS: String(props.dataTtlDays),
-        EVENT_ENDS_AT: props.eventEndsAt,
+        HUB_MODE: props.mode,
+        EVENT_ENDS_AT: props.eventEndsAt ?? '',
+        TOKEN_TTL_DAYS: String(props.tokenTtlDays),
+        EVENT_RETENTION_DAYS: String(props.eventRetentionDays),
         PEPPER_SECRET_ARN: pepper.secretArn,
         ORIGIN_SECRET_ARN: originVerify.secretArn,
         RUNTIME_PARAM: runtimeParamName,

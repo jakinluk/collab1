@@ -2,7 +2,10 @@
 
 CollabOne coordinates a team of people and their Claude Code agents on shared projects: a Claude Code plugin (`c1`), a small serverless hub and a live board.
 
-**First mode: the hackathon.** The first use case CollabOne covers is a time-boxed team hackathon, where people set goals and the participants' Claude Code sessions do most of the building. Everything in this version is built for that event mode: data and tokens expire when the event ends, projects move through hackathon phases (plan, build, freeze, demo), and `/c1:wrap` tears the hub down afterwards. An ongoing mode for everyday team work (no end date, a chosen retention period, token rotation) is a later step.
+**Two modes.** A hub runs in one of them, chosen at deploy time:
+
+- **Event mode: the hackathon.** The first use case. A time-boxed team hackathon where people set goals and the participants' Claude Code sessions do most of the building. Data and tokens expire when the event ends, projects move through hackathon phases (plan, build, freeze, demo), and `/c1:wrap` tears the hub down afterwards.
+- **Ongoing mode: day-to-day work** (`-c mode=ongoing`, see `docs/ONGOING.md`). Agent-native: agents do every operation, and humans step in when the hub asks or when they want to steer. You get epics with dates and milestones on catalog repos, versioned inputs (PRDs, feedback) and decision records. New or changed inputs and decisions open change requests with an auto-generated re-plan ticket any agent picks up. A change log and a decision log record what happened. Nothing the team works on expires, and tokens rotate.
 
 In hackathon mode:
 
@@ -16,7 +19,7 @@ plugin/                           the Claude Code plugin: skills, hooks, monitor
 backend/                          AWS CDK stack + Lambdas (TypeScript): API, DynamoDB, AppSync Events, Cognito, CloudFront + WAF
 board/                            the board web app (static; open board/index.html?demo to see it with sample data)
 e2e/                              end-to-end runs of the real CLI and the real board against a local hub
-docs/                             SPEC.md (design), CONTRACT.md (API/CLI contract), SECURITY.md, DEPLOY.md
+docs/                             SPEC.md (design), ONGOING.md (ongoing mode), CONTRACT.md (API/CLI contract), SECURITY.md, DEPLOY.md
 ```
 
 ## Try the board now
@@ -25,7 +28,7 @@ Open `board/index.html?demo` in a browser. It runs offline with sample data and 
 
 ## Run the whole thing locally
 
-`cd backend && npm run local` starts a local hub on http://localhost:8787: the real API, hub logic and realtime protocol, with in-memory stand-ins for DynamoDB, S3, Cognito and AppSync Events. Open that URL to use the live board (sign in with any email), and point the CLI at it with `c1 join --code … --api http://localhost:8787`. See `e2e/README.md`.
+`cd backend && npm run local` starts a local hub on http://localhost:8787 (add `-- --mode ongoing` for ongoing mode): the real API, hub logic and realtime protocol, with in-memory stand-ins for DynamoDB, S3, Cognito and AppSync Events. Open that URL to use the live board (sign in with any email), and point the CLI at it with `c1 join --code … --api http://localhost:8787`. See `e2e/README.md`.
 
 ## Set it up
 
@@ -41,4 +44,4 @@ Follow `docs/DEPLOY.md`:
 
 ## Status
 
-v0.3, built and tested locally: type-check, unit tests (backend 74, plugin 24), CDK synth, `claude plugin validate --strict`, and two end-to-end runs against the local hub (CLI: 96 checks with two seats; board in Chrome: 14 checks). **Not yet deployed to AWS.** The first deploy and the dry run in `docs/SPEC.md` §14 are the next steps. Open items: D2 (monitor vs channel) and checking that monitors wake idle sessions.
+v0.5, built and tested locally: type-check, unit tests (backend 98, plugin 24), CDK synth in both modes, and four end-to-end runs against the local hub. Event mode: the CLI with two seats (96 checks) and the board in Chrome (14 checks). Ongoing mode: the CLI with one person (51 checks) and the board (10 checks). **Not yet deployed to AWS.** The first deploy and the dry run in `docs/SPEC.md` §14 are the next steps. Open items: D2 (monitor vs channel) and checking that monitors wake idle sessions.

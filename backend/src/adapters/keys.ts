@@ -1,4 +1,4 @@
-import type { Decision, Escalation, Goal, KnowledgeItem, Project, Proposal, Seat, Settings, Ticket } from '../shared/types';
+import type { ChangeRequest, Decision, DecisionRecord, Escalation, Goal, Input, InputVersion, KnowledgeItem, Project, Proposal, Repo, Seat, Settings, Ticket } from '../shared/types';
 import { pad, numericPart } from '../core/ids';
 import type { StoredRule } from '../core/rules';
 
@@ -44,6 +44,12 @@ export const K = {
   knowledge: (k: Pick<KnowledgeItem, 'id' | 'status'>): Keys => ({ PK: `KNOW#${k.id}`, SK: 'META', GSI1PK: 'KNOW', GSI1SK: `${k.status}#${idSort(k.id)}` }),
   proposal: (p: Pick<Proposal, 'id' | 'status'>): Keys => ({ PK: `PROP#${p.id}`, SK: 'META', GSI1PK: 'PROPS', GSI1SK: `${p.status}#${idSort(p.id)}` }),
   event: (seq: number): Keys => ({ PK: 'EVENT', SK: pad(seq, 12) }),
+  catalogRepo: (name: string): Keys => ({ PK: 'HUB', SK: `REPO#${name}` }),
+  input: (id: string): Keys => ({ PK: `INPUT#${id}`, SK: 'META', GSI1PK: 'INPUTS', GSI1SK: idSort(id) }),
+  inputVersion: (id: string, version: number): Keys => ({ PK: `INPUT#${id}`, SK: `V#${pad(version, 4)}` }),
+  record: (id: string): Keys => ({ PK: `REC#${id}`, SK: 'META', GSI1PK: 'RECS', GSI1SK: idSort(id) }),
+  change: (c: Pick<ChangeRequest, 'id' | 'projectId'>): Keys => ({ PK: `CR#${c.id}`, SK: 'META', GSI1PK: `PROJECT#${c.projectId}#CHANGES`, GSI1SK: idSort(c.id) }),
+  changePk: (id: string): Keys => ({ PK: `CR#${id}`, SK: 'META' }),
 };
 
 export interface TokenRecord {
@@ -93,4 +99,9 @@ export type EntityMap = {
   join: JoinRecord;
   lock: LockRecord;
   rule: StoredRule;
+  input: Input;
+  inputVersion: InputVersion;
+  record: DecisionRecord;
+  change: ChangeRequest;
+  catalogRepo: Repo;
 };

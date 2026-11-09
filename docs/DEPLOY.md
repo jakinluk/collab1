@@ -1,6 +1,6 @@
 # Deploying and running CollabOne
 
-Full backend details: `backend/README.md`. This page is the organizer's checklist from an empty AWS sandbox to a running hackathon.
+Full backend details: `backend/README.md`. This page is the organizer's checklist from an empty AWS sandbox to a running hackathon. For a hub for everyday work, deploy with `-c mode=ongoing` instead of `-c eventEndsAt=…` and follow `docs/ONGOING.md`.
 
 ## 1. Before the offsite
 

@@ -40,8 +40,20 @@ const needProject = (projectId) => projectId || fail('no project: pass --project
 const ticketLine = (t) =>
   [t.id, t.status, truncate(t.title, 60), (t.lanes ?? []).join(','), t.booking ? `${t.booking.seatId}${t.booking.workerId ? '/' + t.booking.workerId : ''}` : '', `p${t.priority}${t.wave !== undefined ? ' w' + t.wave : ''}`];
 
+const describeResult = (res) => {
+  if (!res || typeof res !== 'object') return '';
+  const parts = [];
+  const main = res.record ?? res.input ?? res;
+  if (main.id) parts.push(`${main.id}${main.status ? ` is ${main.status}` : ''}${res.version && typeof res.version === 'number' ? ` (v${res.version})` : ''}`);
+  if (res.status === 'approved' && res.contestUntil) parts.push(`it applies at ${new Date(res.contestUntil).toISOString().slice(11, 16)}Z unless a human rejects it`);
+  if (Array.isArray(res.changes)) parts.push(res.changes.length ? `change requests: ${res.changes.join(', ')}` : 'no change request needed');
+  if (res.created && typeof res.created === 'object') parts.push(`created ${Object.values(res.created).join(', ')}`);
+  return parts.join('; ');
+};
 const printProposal = (r) =>
-  r.executed ? `Done (executed as a human): ${JSON.stringify(r.result ?? {}).slice(0, 300)}` : `Proposal ${r.proposal?.id} is waiting for a human.\nApprove it in the board: ${r.approveUrl}`;
+  r.executed
+    ? `Done: ${describeResult(r.result) || JSON.stringify(r.result ?? {}).slice(0, 300)}`
+    : `Proposal ${r.proposal?.id} is waiting for a human${r.needsHuman?.length ? ` because it ${r.needsHuman.join('; ')}` : ''}.\nApprove it in the board: ${r.approveUrl}`;
 
 // ---------- join / me / status ----------
 
@@ -439,22 +451,31 @@ export async function review(pos, flags) {
     const pid = needProject(projectId);
     const { tickets } = await api.get(`/projects/${enc(pid)}/tickets?status=review`);
     const now = Date.now();
+    const own = (t) => (t.booking?.seatId === cfg.seatId ? 1 : 0);
     const cands = (tickets ?? [])
-      .filter((t) => t.booking?.seatId !== cfg.seatId && (!t.review || t.review.leaseExpiresAt < now))
-      .sort((a, b) => a.priority - b.priority);
+      .filter((t) => !t.review || t.review.leaseExpiresAt < now)
+      .sort((a, b) => own(a) - own(b) || a.priority - b.priority);
     for (const t of cands) {
       try {
         const r = await api.post(`/tickets/${enc(t.id)}/review/book`, typeof flags.worker === 'string' ? { workerId: flags.worker } : {});
         return { data: r, text: `Reviewing ${r.id}: ${r.title}\n  PR ${r.prUrl ?? '—'}\n  next: /c1:review ${r.id}` };
       } catch (e) {
-        if (!(e instanceof ApiError) || e.status !== 409) throw e;
+        // 403: a hackathon hub refuses reviews of your own seat's work; 409: someone else took it.
+        if (!(e instanceof ApiError) || (e.status !== 409 && e.status !== 403)) throw e;
       }
     }
     throw new ApiError(409, 'not_ready', 'no review waiting for you');
   }
   if (sub === 'done') {
     const outcome = need(flags.outcome, '--outcome merged|changes_requested is required');
-    const t = await api.post(`/tickets/${enc(need(tid, 'c1 review done <id> --outcome'))}/review/done`, { outcome, ...(flags.note ? { note: String(flags.note) } : {}), ...(flags.pr ? { prUrl: String(flags.pr) } : {}) });
+    const files = typeof flags.files === 'string' ? flags.files.split(/[\s,]+/).filter(Boolean).slice(0, 300) : undefined;
+    const t = await api.post(`/tickets/${enc(need(tid, 'c1 review done <id> --outcome'))}/review/done`, {
+      outcome,
+      ...(flags.note ? { note: String(flags.note) } : {}),
+      ...(flags.pr ? { prUrl: String(flags.pr) } : {}),
+      ...(typeof flags.sha === 'string' ? { mergeSha: flags.sha } : {}),
+      ...(files?.length ? { files } : {}),
+    });
     return { data: t, text: `${t.id} → ${t.status}` };
   }
   return fail(`unknown: c1 review ${sub}`);

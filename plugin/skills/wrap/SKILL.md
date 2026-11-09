@@ -7,6 +7,8 @@ allowed-tools: Bash(c1 *), Bash(gh *), Bash(git *)
 ---
 # Wrap up
 
+Event mode only. On an ongoing hub there is nothing to tear down: archive finished epics (`c1 epic update <id> --state archived`) and take backups with `c1 export`.
+
 Confirm each step with the human before doing it.
 
 1. **Freeze:** for each project, `c1 project phase <id> freeze` (approve in the board). Autopilots switch to fix, test and review work only.

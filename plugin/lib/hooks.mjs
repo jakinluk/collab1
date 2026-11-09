@@ -6,6 +6,7 @@ import { addSessionTickets, cacheDir, readSession, removeSessionTicket } from '.
 import { guardDecision, relativeToRoot } from './paths.mjs';
 import { existingDir, identifyRepo, preset, resolveRepoPath, withDefaults } from './repos.mjs';
 import { syncSkills } from './skills.mjs';
+import { rotateIfDue } from './ongoing.mjs';
 import { clientVersion, updateState } from './version.mjs';
 import { readJson, readStdin, parseJsonSafe, truncate, writeJson } from './util.mjs';
 
@@ -124,6 +125,19 @@ function persistSessionEnv(sessionId) {
   }
 }
 
+/** Ongoing mode: the epics this seat follows and anything suspect on its plate. */
+async function ongoingContext(api, seat, followed) {
+  const b = await api.get('/board');
+  const rows = (b.roadmap ?? []).filter((r) => followed.includes(r.projectId));
+  const lines = [];
+  if (rows.length) lines.push(`Ongoing mode. You follow: ${rows.map((r) => `${r.projectId} [${r.epic?.state ?? '—'}] ${r.done}/${r.total} done${r.suspect ? `, ${r.suspect} suspect` : ''}`).join('; ')}. c1 ticket next picks from these, highest priority first.`);
+  const open = (b.changes ?? []).filter((c) => followed.includes(c.projectId) && ['assessing', 'proposed'].includes(c.status));
+  if (open.length)
+    lines.push(`Open change requests: ${open.map((c) => `${c.id} [${c.status}] ${truncate(c.title, 50)} (${c.impact.length} tickets)`).join('; ')}. Tickets they list are suspect: do not merge them; /c1:assess <id> proposes verdicts.`);
+  lines.push('Cite what a ticket implements in its refs (dod:d1, input:I1#anchor, decision:R1); c1 ticket show includes the cited text.');
+  return lines;
+}
+
 export async function sessionStart(input) {
   persistSessionEnv(input.session_id);
   let cfg;
@@ -149,6 +163,11 @@ export async function sessionStart(input) {
     }
     const seat = me.seat ?? {};
     const pid = me.projectId ?? cfg.projectId;
+    if (me.mode === 'ongoing') {
+      const rotated = await rotateIfDue(api, cfg);
+      if (rotated) lines.push(`CollabOne rotated this Mac's agent token (valid until ${new Date(rotated.expiresAt).toISOString().slice(0, 10)}).`);
+      lines.push(...(await ongoingContext(api, seat, me.projects ?? seat.projects ?? []).catch(() => [])));
+    }
     lines.push(`CollabOne: you are seat ${seat.id} (${seat.name ?? ''}), work mode ${seat.workMode}, autopilot ${seat.autopilot ? 'ON' : 'off'}${pid ? `, pinned project ${pid}` : ', no project yet (c1 me pin <project>)'}.`);
     if (pid) {
       const [goal, active] = await Promise.all([api.get(`/projects/${enc(pid)}/goal`).catch(() => ({})), activeTickets(api, pid).catch(() => [])]);
@@ -277,6 +296,11 @@ export async function autopilotStop(input) {
     const me = await api.get('/me');
     const seat = me.seat ?? {};
     const pid = me.projectId ?? cfg.projectId;
+    if (me.mode === 'ongoing') {
+      const rotated = await rotateIfDue(api, cfg);
+      if (rotated) lines.push(`CollabOne rotated this Mac's agent token (valid until ${new Date(rotated.expiresAt).toISOString().slice(0, 10)}).`);
+      lines.push(...(await ongoingContext(api, seat, me.projects ?? seat.projects ?? []).catch(() => [])));
+    }
     if (!seat.autopilot || !pid) return null;
     const { tickets } = await api.get(`/projects/${enc(pid)}/tickets`);
     const all = tickets ?? [];
