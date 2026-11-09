@@ -25,15 +25,15 @@ export function classify(env, ctx) {
     if (env.to && !toMe) return null;
     return out(env, toMe ? 'DM' : 'MSG', '', false);
   }
-  if (t === 'tool.released') return out(env, 'UPDATE', '→ /h1:update, then /reload-plugins', true);
+  if (t === 'tool.released') return out(env, 'UPDATE', '→ /c1:update, then /reload-plugins', true);
   if (t === 'ticket.ready' || (t === 'ticket.added' && env.data?.status === 'ready')) {
     if (!mine || !lanesMatch(env.data?.lanes, ctx.lanes)) return null;
-    hint = '→ /h1:ticket next';
+    hint = '→ /c1:ticket next';
     return out(env, '', hint, false);
   }
   if (t === 'ticket.review_needed') {
     if (!mine || fromMe) return null;
-    return out(env, 'REVIEW', '→ h1 review next', false);
+    return out(env, 'REVIEW', '→ c1 review next', false);
   }
   if (t.startsWith('ticket.')) {
     if (env.ticketId && ctx.myTickets?.has(env.ticketId) && !fromMe) return out(env, '', '', false);
@@ -45,7 +45,7 @@ export function classify(env, ctx) {
     const forMe = toHumans || (Array.isArray(eligible) ? eligible.includes(ctx.seatId) : mine);
     if (!forMe) return null;
     const id = env.data?.decisionId ?? '';
-    return out(env, '', id ? `→ /h1:decide ${id}` : '', toHumans);
+    return out(env, '', id ? `→ /c1:decide ${id}` : '', toHumans);
   }
   if (t === 'decision.made' || t === 'decision.defaulted') return mine ? out(env, '', '', false) : null;
   if (ESCALATION_EVENTS.test(t)) {
@@ -55,7 +55,7 @@ export function classify(env, ctx) {
     }
     if (env.ticketId && ctx.myTickets?.has(env.ticketId)) return out(env, '', '', false);
     if (t === 'escalation.raised' && mine && env.data?.resolver && /agent|self/.test(env.data.resolver) && !fromMe)
-      return out(env, 'HELP?', env.data?.escalationId ? `→ h1 answer ${env.data.escalationId}` : '', false);
+      return out(env, 'HELP?', env.data?.escalationId ? `→ c1 answer ${env.data.escalationId}` : '', false);
     return null;
   }
   if (KNOWLEDGE_EVENTS.has(t)) {
@@ -72,7 +72,7 @@ export function classify(env, ctx) {
 }
 
 function out(env, tag, hint, human) {
-  const prefix = tag ? `[h1] ${tag} ` : '[h1] ';
+  const prefix = tag ? `[c1] ${tag} ` : '[c1] ';
   const tail = hint ? ` ${hint}` : '';
   const room = 200 - prefix.length - tail.length;
   return { line: `${prefix}${truncate(env.summary, room)}${tail}`, human, syncSkills: false };
@@ -94,7 +94,7 @@ export class RateLimiter {
     const t = this.now();
     const lines = [];
     if (t - this.start >= this.windowMs) {
-      if (this.suppressed) lines.push(`[h1] … ${this.suppressed} more events were hidden (h1 events --since ${this.firstSuppressedSeq - 1})`);
+      if (this.suppressed) lines.push(`[c1] … ${this.suppressed} more events were hidden (c1 events --since ${this.firstSuppressedSeq - 1})`);
       this.start = t;
       this.count = 0;
       this.suppressed = 0;

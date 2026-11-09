@@ -13,7 +13,7 @@ const PATTERNS: [string, RegExp][] = [
   ['slack-token', /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g],
   ['google-api-key', /\bAIza[0-9A-Za-z_-]{35}\b/g],
   ['private-key-block', /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----/g],
-  ['h1-agent-token', /\bh1a_[A-Za-z0-9_-]{43}\b/g],
+  ['c1-agent-token', /\bc1a_[A-Za-z0-9_-]{43}\b/g],
   ['jwt', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g],
 ];
 

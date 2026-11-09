@@ -14,7 +14,7 @@ const setup = () => {
   const db = new FakeDynamo();
   let clock = Date.parse('2026-11-20T09:00:00Z');
   const now = () => clock;
-  const store = new Store('h1', 21, db.asClient(), now);
+  const store = new Store('c1', 21, db.asClient(), now);
   const uploads = new Map<string, number>();
   const files = {
     uploadUrl: async (k: string) => `https://s3.example/${k}?put`,
@@ -32,7 +32,7 @@ const setup = () => {
       userPoolId: 'pool',
       clientId: 'client',
       region: 'us-east-1',
-      events: { httpHost: 'x.appsync-api.us-east-1.amazonaws.com', realtimeUrl: 'wss://x/event/realtime', namespace: 'h1' },
+      events: { httpHost: 'x.appsync-api.us-east-1.amazonaws.com', realtimeUrl: 'wss://x/event/realtime', namespace: 'c1' },
     }),
     eventEndsAt: Date.parse('2026-12-01T00:00:00Z'),
     now,
@@ -475,7 +475,7 @@ describe('api router', () => {
   });
 });
 
-describe('HackathonOne fix queue and releases', () => {
+describe('CollabOne fix queue and releases', () => {
   const call = (env: ReturnType<typeof setup>, method: string, path: string, auth: Record<string, string>, body: unknown = {}, clientVersion?: string) =>
     dispatch(env.hub, { method, path, params: {}, query: {}, body, auth, clientVersion });
 
@@ -483,14 +483,14 @@ describe('HackathonOne fix queue and releases', () => {
     const env = setup();
     const { hub } = env;
     await hub.createSeatForHuman('s-a', 'a@x', { id: 'ania', name: 'Ania' });
-    await expect(hub.fileToolBug(agent('ania'), { summary: 'watch prints nothing' })).rejects.toThrow(/HackathonOne repo URL/);
-    await hub.execute(human('ania'), 'settings.set', { toolRepoUrl: 'git@github.com:acme/hakatonOne.git' });
+    await expect(hub.fileToolBug(agent('ania'), { summary: 'watch prints nothing' })).rejects.toThrow(/CollabOne repo URL/);
+    await hub.execute(human('ania'), 'settings.set', { toolRepoUrl: 'git@github.com:acme/collab1.git' });
     const t = await hub.fileToolBug(agent('ania', 'w1'), { summary: 'watch prints nothing after pin', detail: 'steps…', area: 'plugin', urgent: true, ticketId: 'T4' });
-    expect(t).toMatchObject({ projectId: 'hackathonone', repo: 'hakatonOne', status: 'ready', priority: 1, lanes: ['plugin'] });
+    expect(t).toMatchObject({ projectId: 'collabone', repo: 'collab1', status: 'ready', priority: 1, lanes: ['plugin'] });
     expect(t.title).toBe('Fix: watch prints nothing after pin');
     expect(t.description).toContain('Reported by ania/w1 (agent) while working on T4');
-    const project = (await hub.requireProject('hackathonone')).value;
-    expect(project.repos[0]).toMatchObject({ name: 'hakatonOne', integrationBranch: 'main' });
+    const project = (await hub.requireProject('collabone')).value;
+    expect(project.repos[0]).toMatchObject({ name: 'collab1', integrationBranch: 'main' });
     const second = await hub.fileToolBug(agent('ania'), { summary: 'board typo', area: 'board' });
     expect(second.pathsOwned).toEqual(['board/**']);
     await expect(hub.fileToolBug(agent('ania'), { summary: 'key AKIAABCDEFGHIJKLMNOP leaked' })).rejects.toThrow(/secrets/);

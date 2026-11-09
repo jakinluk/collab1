@@ -84,21 +84,21 @@ export function guardDecision(relPath, mine, others, protect = {}) {
     return {
       action: 'block',
       rule: 'B2',
-      reason: `${relPath} is a protected shared path of this repo (${hotHit}). Do not edit it from ${ids}. Raise it: h1 raise blocker --rule B2 --ticket ${mine[0].id} --summary "Need change to ${relPath}"`,
+      reason: `${relPath} is a protected shared path of this repo (${hotHit}). Do not edit it from ${ids}. Raise it: c1 raise blocker --rule B2 --ticket ${mine[0].id} --summary "Need change to ${relPath}"`,
     };
   const contractHit = mine.some((t) => CONTRACT_TYPES.has(t.type)) ? undefined : matchesAny(relPath, contractPaths);
   if (contractHit)
     return {
       action: 'block',
       rule: 'B1',
-      reason: `${relPath} is a shared contract path (${contractHit}); only contract or glue tickets change contracts. Raise it: h1 raise blocker --rule B1 --ticket ${mine[0].id} --summary "Contract change needed in ${relPath}" --option "<proposed change>"`,
+      reason: `${relPath} is a shared contract path (${contractHit}); only contract or glue tickets change contracts. Raise it: c1 raise blocker --rule B1 --ticket ${mine[0].id} --summary "Contract change needed in ${relPath}" --option "<proposed change>"`,
     };
   const other = others.find((t) => matchesAny(relPath, t.pathsOwned));
   if (other)
     return {
       action: 'block',
       rule: 'B2',
-      reason: `${relPath} is owned by ${other.id} (${other.booking?.seatId ?? 'another seat'}). Raise it: h1 raise blocker --rule B2 --ticket ${mine[0].id} --summary "Need change to ${relPath} owned by ${other.id}"`,
+      reason: `${relPath} is owned by ${other.id} (${other.booking?.seatId ?? 'another seat'}). Raise it: c1 raise blocker --rule B2 --ticket ${mine[0].id} --summary "Need change to ${relPath} owned by ${other.id}"`,
     };
   return { action: 'warn', reason: `${relPath} is outside ${ids} pathsOwned; keep the change minimal or raise B2` };
 }

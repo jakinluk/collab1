@@ -181,7 +181,7 @@ export const findRule = (rules: readonly BlockerRule[], code: string): BlockerRu
 
 export const rulesDigest = (rules: readonly BlockerRule[], version: number): string =>
   [
-    `HackathonOne blocker rules v${version}. Classify every problem against these rows before asking anyone; if no row matches, decide yourself and log it.`,
+    `CollabOne blocker rules v${version}. Classify every problem against these rows before asking anyone; if no row matches, decide yourself and log it.`,
     ...rules.map(
       (r) =>
         `${r.code} ${r.name} [${r.severity}] — ${r.trigger}. Resolver: ${r.resolver}${r.resolverNote ? ` (${r.resolverNote})` : ''}.` +

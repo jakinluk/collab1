@@ -1,4 +1,4 @@
-# Deploying and running HackathonOne
+# Deploying and running CollabOne
 
 Full backend details: `backend/README.md`. This page is the organizer's checklist from an empty AWS sandbox to a running hackathon.
 
@@ -21,31 +21,31 @@ Full backend details: `backend/README.md`. This page is the organizer's checklis
 5. **Install the plugin on every MacBook**, inside Claude Code:
    ```
    /plugin marketplace add jakinluk/collab1
-   /plugin install h1@hackathonone
+   /plugin install c1@collabone
    ```
    Choose project scope in the repos you will hack in.
 6. **Connect each Mac:**
    1. Board → **Tokens & Macs** → **Connect a Mac**. This gives a one-time code valid for 10 minutes.
-   2. In Claude Code, run `/h1:join` (or paste the command the board shows: `h1 join --code XXXX-XXXX --api <BoardUrl>`).
+   2. In Claude Code, run `/c1:join` (or paste the command the board shows: `c1 join --code XXXX-XXXX --api <BoardUrl>`).
    3. Restart Claude Code so the monitor starts.
-7. **Dry run** with the checklist in `docs/SPEC.md` §14: `h1 doctor` on venue-like Wi-Fi and a hotspot, one ticket through work → review → merge, a proposal approved in the board, token revocation.
+7. **Dry run** with the checklist in `docs/SPEC.md` §14: `c1 doctor` on venue-like Wi-Fi and a hotspot, one ticket through work → review → merge, a proposal approved in the board, token revocation.
 
 ## 2. At the offsite
 
-**Fixing HackathonOne on the day** (details: `docs/SPEC.md` §8.5):
-- One or two people pin to the `hackathonone` project and work its tickets; everyone else reports problems with `/h1:bug`.
+**Fixing CollabOne on the day** (details: `docs/SPEC.md` §8.5):
+- One or two people pin to the `collabone` project and work its tickets; everyone else reports problems with `/c1:bug`.
 - Backend or board fix: merge, then `npx cdk deploy` with the same `-c` values as the first deploy.
-- Plugin fix: bump `plugin/.claude-plugin/plugin.json` `version`, merge to the branch the marketplace serves, then **Settings → HackathonOne releases → Publish** (or `h1 release propose`). Add a minimum version only for changes old Macs must not miss. People run `/h1:update` and `/reload-plugins`.
+- Plugin fix: bump `plugin/.claude-plugin/plugin.json` `version`, merge to the branch the marketplace serves, then **Settings → CollabOne releases → Publish** (or `c1 release propose`). Add a minimum version only for changes old Macs must not miss. People run `/c1:update` and `/reload-plugins`.
 
 
-1. `/h1:network` on every Mac. If `h1 doctor` fails on WebSockets, switch to an iPhone Personal Hotspot.
-2. `/h1:project new` per idea. Each one creates `hack/<project>` branches and proposes the project; approve it in the board.
-3. `/h1:goal` per project, then approve it.
-4. `/h1:plan`, then approve the ticket graph.
-5. Everyone runs `/h1:autopilot on` in their chosen work mode. Humans watch **Needs a human** and **Votes** on the board (projector mode on the venue TV).
+1. `/c1:network` on every Mac. If `c1 doctor` fails on WebSockets, switch to an iPhone Personal Hotspot.
+2. `/c1:project new` per idea. Each one creates `hack/<project>` branches and proposes the project; approve it in the board.
+3. `/c1:goal` per project, then approve it.
+4. `/c1:plan`, then approve the ticket graph.
+5. Everyone runs `/c1:autopilot on` in their chosen work mode. Humans watch **Needs a human** and **Votes** on the board (projector mode on the venue TV).
 6. Phase calls (`freeze`, `demo`) go from the board's Settings or the project menu.
 
 ## 3. After
 
-1. `/h1:wrap`: export the event log, harvest follow-up issues, retire shared `h1--*` skills, revoke all tokens.
+1. `/c1:wrap`: export the event log, harvest follow-up issues, retire shared `c1--*` skills, revoke all tokens.
 2. `cd backend && npx cdk destroy` (or keep it until the TTL clears the data).

@@ -59,7 +59,7 @@ test('guard decisions', () => {
   const hot = guardDecision('package.json', mine, others, protect);
   assert.equal(hot.action, 'block');
   assert.equal(hot.rule, 'B2');
-  assert.match(hot.reason, /h1 raise blocker --rule B2/);
+  assert.match(hot.reason, /c1 raise blocker --rule B2/);
   const nested = guardDecision('apps/web/project.json', mine, others, protect);
   assert.equal(nested.action, 'block');
   const shared = guardDecision('libs/shared/api-interfaces/x.ts', mine, others, protect);
@@ -82,21 +82,21 @@ const ctx = { seatId: 'lukasz', projectId: 'p1', lanes: ['mobile'], myTickets: n
 const env = (o) => ({ seq: 1, ts: 0, stream: 'tasks', from: 'ania', fromKind: 'agent', summary: 'x', ...o });
 
 test('monitor classify filters and formats', () => {
-  assert.match(classify(env({ type: 'ticket.ready', projectId: 'p1', data: { lanes: ['mobile'] }, summary: 'T7 ready (mobile): Cache' }), ctx).line, /^\[h1\] T7 ready .* → \/h1:ticket next$/);
+  assert.match(classify(env({ type: 'ticket.ready', projectId: 'p1', data: { lanes: ['mobile'] }, summary: 'T7 ready (mobile): Cache' }), ctx).line, /^\[c1\] T7 ready .* → \/c1:ticket next$/);
   assert.equal(classify(env({ type: 'ticket.ready', projectId: 'p1', data: { lanes: ['api'] } }), ctx), null);
   assert.equal(classify(env({ type: 'ticket.ready', projectId: 'p2', data: { lanes: ['mobile'] } }), ctx), null);
   assert.equal(classify(env({ type: 'ticket.booked', projectId: 'p1', ticketId: 'T9' }), ctx), null);
   assert.ok(classify(env({ type: 'ticket.changes_requested', projectId: 'p1', ticketId: 'T5' }), ctx));
   const vote = classify(env({ type: 'decision.opened', projectId: 'p1', data: { decisionId: 'D3', eligible: ['lukasz'] }, summary: 'VOTE D3 by 14:20Z: A or B?' }), ctx);
-  assert.match(vote.line, /→ \/h1:decide D3$/);
+  assert.match(vote.line, /→ \/c1:decide D3$/);
   assert.equal(classify(env({ type: 'decision.opened', projectId: 'p1', data: { decisionId: 'D4', eligible: ['ania'] } }), ctx), null);
   const human = classify(env({ type: 'escalation.raised', projectId: 'p2', to: 'humans', summary: 'E4 B6 needs access' }), ctx);
   assert.equal(human.human, true);
-  const skill = classify(env({ type: 'skill.published', stream: 'knowledge', summary: 'skill h1-run-ios-sim v2' }), ctx);
+  const skill = classify(env({ type: 'skill.published', stream: 'knowledge', summary: 'skill c1-run-ios-sim v2' }), ctx);
   assert.equal(skill.syncSkills, true);
-  assert.match(skill.line, /^\[h1\] SKILL /);
+  assert.match(skill.line, /^\[c1\] SKILL /);
   assert.equal(classify(env({ type: 'message', to: 'kasia' }), ctx), null);
-  assert.match(classify(env({ type: 'message', to: 'lukasz', summary: 'ania → lukasz: hi' }), ctx).line, /^\[h1\] DM /);
+  assert.match(classify(env({ type: 'message', to: 'lukasz', summary: 'ania → lukasz: hi' }), ctx).line, /^\[c1\] DM /);
   assert.equal(classify(env({ type: 'message', from: 'lukasz' }), ctx), null);
   assert.ok(classify(env({ type: 'proposal.approved', to: 'lukasz' }), ctx));
   assert.equal(classify(env({ type: 'seat.connected' }), ctx), null);
@@ -114,7 +114,7 @@ test('rate limiter caps lines and summarises', () => {
   t = 61000;
   const next = rl.push('l7', 7);
   assert.equal(next.length, 2);
-  assert.match(next[0], /3 more events were hidden \(h1 events --since 3\)/);
+  assert.match(next[0], /3 more events were hidden \(c1 events --since 3\)/);
   assert.equal(next[1], 'l7');
 });
 
@@ -136,7 +136,7 @@ test('autopilot stop decisions', () => {
   assert.equal(decideStop({ autopilot: true, myWorking: [{ id: 'T1', title: 'Queue', status: 'in_progress' }], last: { reason: work.reason, seq: 10 }, seq: 12 }).block, true);
   const ready = decideStop({ autopilot: true, readyForMe: [{ id: 'T3', title: 'Next' }], activeCount: 0, seq: 1 });
   assert.equal(ready.block, true);
-  assert.match(ready.reason, /h1 ticket next/);
+  assert.match(ready.reason, /c1 ticket next/);
   assert.equal(decideStop({ autopilot: true, readyForMe: [{ id: 'T3', title: 'Next' }], activeCount: 2, limit: 2 }).block, false);
   assert.equal(decideStop({ autopilot: true }).block, false);
 });
@@ -156,15 +156,15 @@ test('tar entry sanitization and skill folder names', () => {
   assert.equal(unsafeEntries(['/etc/passwd']).length, 1);
   assert.equal(unsafeEntries(['../../.zshrc']).length, 1);
   assert.equal(unsafeEntries(['a/../../b']).length, 1);
-  assert.equal(skillFolderName('H1 Run iOS sim!'), 'h1--h1-run-ios-sim');
+  assert.equal(skillFolderName('C1 Run iOS sim!'), 'c1--c1-run-ios-sim');
 });
 
 test('appsync helpers', () => {
   assert.equal(b64url('{"a":"b?"}'), Buffer.from('{"a":"b?"}').toString('base64url'));
-  const [p0, p1] = subprotocols('h.appsync-api.us-east-1.amazonaws.com', 'h1a_tok');
+  const [p0, p1] = subprotocols('h.appsync-api.us-east-1.amazonaws.com', 'c1a_tok');
   assert.equal(p0, 'aws-appsync-event-ws');
-  assert.deepEqual(JSON.parse(Buffer.from(p1.slice(7), 'base64url').toString()), { host: 'h.appsync-api.us-east-1.amazonaws.com', Authorization: 'h1a_tok' });
-  assert.deepEqual(channelsFor({ seatId: 'lukasz' }), ['/h1/all', '/h1/p/*', '/h1/s/lukasz']);
+  assert.deepEqual(JSON.parse(Buffer.from(p1.slice(7), 'base64url').toString()), { host: 'h.appsync-api.us-east-1.amazonaws.com', Authorization: 'c1a_tok' });
+  assert.deepEqual(channelsFor({ seatId: 'lukasz' }), ['/c1/all', '/c1/p/*', '/c1/s/lukasz']);
 });
 
 test('version helpers compare releases and tell where the plugin loads from', async () => {
@@ -176,16 +176,16 @@ test('version helpers compare releases and tell where the plugin loads from', as
   assert.equal(updateState('0.3.0', { latest: '0.3.0' }), 'current');
   assert.equal(updateState('0.3.0', { latest: '0.3.1' }), 'behind');
   assert.equal(updateState('0.3.0', { latest: '0.4.0', minimum: '0.4.0' }), 'blocked');
-  assert.equal(installKind('/Users/a/.claude/plugins/cache/hackathonone/h1/0.3.0'), 'cache');
-  assert.equal(installKind('/Users/a/workspace/hc/hakatonOne/plugin'), 'in_place');
+  assert.equal(installKind('/Users/a/.claude/plugins/cache/collabone/c1/0.3.0'), 'cache');
+  assert.equal(installKind('/Users/a/workspace/hc/collab1/plugin'), 'in_place');
 });
 
 test('monitor announces releases to humans and new ready tickets like ready ones', () => {
   const ctx = { seatId: 'lukasz', projectId: 'p1', lanes: ['mobile'], myTickets: new Set() };
   const env = (o) => ({ seq: 1, ts: 1, stream: 'broadcast', from: 'ania', fromKind: 'human', summary: 's', ...o });
-  const rel = classify(env({ type: 'tool.released', summary: 'HackathonOne 0.3.1 released: fix' }), ctx);
+  const rel = classify(env({ type: 'tool.released', summary: 'CollabOne 0.3.1 released: fix' }), ctx);
   assert.equal(rel.human, true);
-  assert.match(rel.line, /^\[h1\] UPDATE HackathonOne 0\.3\.1 .* → \/h1:update/);
-  assert.match(classify(env({ type: 'ticket.added', projectId: 'p1', data: { status: 'ready', lanes: ['mobile'] }, summary: 'T9 added (ready): x' }), ctx).line, /T9 added .* → \/h1:ticket next/);
+  assert.match(rel.line, /^\[c1\] UPDATE CollabOne 0\.3\.1 .* → \/c1:update/);
+  assert.match(classify(env({ type: 'ticket.added', projectId: 'p1', data: { status: 'ready', lanes: ['mobile'] }, summary: 'T9 added (ready): x' }), ctx).line, /T9 added .* → \/c1:ticket next/);
   assert.equal(classify(env({ type: 'ticket.added', projectId: 'p1', data: { status: 'planned', lanes: ['mobile'] } }), ctx), null);
 });

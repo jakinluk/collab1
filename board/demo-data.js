@@ -1,7 +1,7 @@
-/* HackathonOne board: demo data and a scripted event stream for offline demo mode. */
+/* CollabOne board: demo data and a scripted event stream for offline demo mode. */
 (function () {
   'use strict';
-  const H1 = (window.H1 = window.H1 || {});
+  const C1 = (window.C1 = window.C1 || {});
 
   const MIN = 60 * 1000;
 
@@ -26,7 +26,7 @@
     );
   }
 
-  H1.demoData = function demoData() {
+  C1.demoData = function demoData() {
     const now = Date.now();
     const ago = (m) => now - m * MIN;
     const inMin = (m) => now + m * MIN;
@@ -81,7 +81,7 @@
             instructionsPath: 'CLAUDE.md',
             laneMap: [{ glob: 'src/**', lane: 'mobile' }],
             prLabels: ['hackathon'],
-            notes: 'Native folders are generated: change app config instead of ios/ or android/. Use the shared h1-run-ios-sim skill to run the app.',
+            notes: 'Native folders are generated: change app config instead of ios/ or android/. Use the shared c1-run-ios-sim skill to run the app.',
           },
         ],
         lanes: ['mobile', 'api', 'web', 'infra'],
@@ -218,7 +218,7 @@
     ];
 
     const knowledge = [
-      { id: 'K7', kind: 'skill', name: 'h1-run-ios-sim', version: 2, author: 'ania', tags: ['ios', 'simulator', 'e2e'], scope: 'global', body: 'Build the app, boot the iOS Simulator and run the Maestro flows.', status: 'active', createdAt: ago(7) },
+      { id: 'K7', kind: 'skill', name: 'c1-run-ios-sim', version: 2, author: 'ania', tags: ['ios', 'simulator', 'e2e'], scope: 'global', body: 'Build the app, boot the iOS Simulator and run the Maestro flows.', status: 'active', createdAt: ago(7) },
       { id: 'K6', kind: 'tip', name: 'xcode-select first', version: 1, author: 'lukasz', tags: ['ios'], scope: 'global', body: 'xcrun simctl boot fails until Xcode is selected: sudo xcode-select -s /Applications/Xcode.app', status: 'active', createdAt: ago(16) },
       { id: 'K5', kind: 'playbook', name: 'Unit tests in a worktree', version: 1, author: 'marek', tags: ['monorepo', 'tests'], scope: 'global', body: 'Symlink node_modules, then run nx unit through test-lock.sh.', status: 'active', createdAt: ago(48) },
       { id: 'K4', kind: 'tip', name: 'Never build locally', version: 1, author: 'kasia', tags: ['monorepo'], scope: 'global', body: 'Use npm run type:check, never nx build: bundling takes over 1 GB per service.', status: 'active', createdAt: ago(95) },
@@ -250,7 +250,7 @@
       ev(12, 'escalations', 'blocker.raised', 'tomek', 'agent', 'E5 (B6) T9 needs access to the sandbox media bucket', { projectId: 'offline-capture', ticketId: 'T9' }),
       ev(9, 'tasks', 'ticket.pr', 'kasia', 'agent', 'T15 PR #1418 opened, review needed', { projectId: 'repair-cart', ticketId: 'T15' }),
       ev(8, 'escalations', 'blocker.raised', 'tomek', 'agent', 'E4 (B5) Cut the OCR fallback from the demo scope', { projectId: 'repair-cart', ticketId: 'T21' }),
-      ev(7, 'knowledge', 'skill.updated', 'ania', 'agent', 'Skill h1-run-ios-sim v2 published, synced to every Mac'),
+      ev(7, 'knowledge', 'skill.updated', 'ania', 'agent', 'Skill c1-run-ios-sim v2 published, synced to every Mac'),
       ev(6, 'tasks', 'ticket.review_booked', 'lukasz', 'agent', 'lukasz/w1 booked the review of T3', { projectId: 'offline-capture', ticketId: 'T3' }),
       ev(5, 'decisions', 'proposal.created', 'kasia', 'agent', 'P6 proposed: add "cart shareable by link" to the definition of done', { projectId: 'repair-cart' }),
       ev(4, 'escalations', 'help.requested', 'ania', 'agent', 'E3 (B3) iOS Simulator build fails: needs a hand', { projectId: 'offline-capture', ticketId: 'T3' }),
@@ -288,7 +288,7 @@
    * Scripted demo stream. Each step mutates the demo state and returns an envelope.
    * The board calls these one at a time on a timer; after the last step it restarts.
    */
-  H1.demoSteps = [
+  C1.demoSteps = [
     function (s, now) {
       const t = find(s.tickets, 'T5');
       t.status = 'in_progress';
@@ -314,8 +314,8 @@
       return env(s, now, 'tasks', 'ticket.booked', 'ania', 'agent', 'ania booked T11 Web report refreshes live', 'offline-capture', 'T11');
     },
     function (s, now) {
-      s.knowledge.unshift({ id: 'K8', kind: 'skill', name: 'h1-run-maestro-flow', version: 1, author: 'lukasz', tags: ['ios', 'e2e'], scope: 'global', body: 'Run one Maestro flow against the booted simulator with retries.', status: 'active', createdAt: now });
-      return env(s, now, 'knowledge', 'skill.published', 'lukasz', 'agent', 'Skill h1-run-maestro-flow v1 published, synced to every Mac');
+      s.knowledge.unshift({ id: 'K8', kind: 'skill', name: 'c1-run-maestro-flow', version: 1, author: 'lukasz', tags: ['ios', 'e2e'], scope: 'global', body: 'Run one Maestro flow against the booted simulator with retries.', status: 'active', createdAt: now });
+      return env(s, now, 'knowledge', 'skill.published', 'lukasz', 'agent', 'Skill c1-run-maestro-flow v1 published, synced to every Mac');
     },
     function (s, now) {
       const t = find(s.tickets, 'T3');
@@ -328,8 +328,8 @@
     function (s, now) {
       const e = find(s.escalations, 'E3');
       e.status = 'resolved';
-      e.resolution = { text: 'Use the h1-run-ios-sim skill; it selects Xcode first.', by: 'lukasz', at: now };
-      return env(s, now, 'escalations', 'escalation.resolved', 'lukasz', 'agent', 'E3 answered by lukasz: use the h1-run-ios-sim skill', 'offline-capture', 'T3');
+      e.resolution = { text: 'Use the c1-run-ios-sim skill; it selects Xcode first.', by: 'lukasz', at: now };
+      return env(s, now, 'escalations', 'escalation.resolved', 'lukasz', 'agent', 'E3 answered by lukasz: use the c1-run-ios-sim skill', 'offline-capture', 'T3');
     },
     function (s, now) {
       const t = find(s.tickets, 'T18');

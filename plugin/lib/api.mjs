@@ -30,7 +30,7 @@ export function createClient({ apiUrl, token, timeoutMs = 15000, fetchImpl = glo
         method,
         headers: {
           accept: 'application/json',
-          'x-h1-client-version': clientVersion(),
+          'x-c1-client-version': clientVersion(),
           ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
           ...(token && !opts.noAuth ? { authorization: `Bearer ${token}` } : {}),
         },
@@ -67,9 +67,9 @@ export function createClient({ apiUrl, token, timeoutMs = 15000, fetchImpl = glo
 
 export function clientFromConfig(opts = {}) {
   const cfg = loadConfig();
-  if (!cfg?.apiUrl) throw new ApiError(0, 'not_joined', 'this Mac is not joined yet: run /h1:join (h1 join --code XXXX-XXXX --api <board URL>)');
+  if (!cfg?.apiUrl) throw new ApiError(0, 'not_joined', 'this Mac is not joined yet: run /c1:join (c1 join --code XXXX-XXXX --api <board URL>)');
   const token = readToken(cfg.seatId);
-  if (!token) throw new ApiError(0, 'not_joined', 'no agent token found: run h1 join again with a fresh join code from the board');
+  if (!token) throw new ApiError(0, 'not_joined', 'no agent token found: run c1 join again with a fresh join code from the board');
   return { cfg, token, api: createClient({ apiUrl: cfg.apiUrl, token, ...opts }) };
 }
 

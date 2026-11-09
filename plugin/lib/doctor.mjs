@@ -39,7 +39,7 @@ export async function doctor({ api: apiFlag } = {}) {
       add('HTTPS to the hub API', false, e.message, portal ? 'Captive portal: log in to the Wi-Fi in a browser first.' : 'Check the board URL; if other sites work, try the iPhone hotspot.');
     }
   } else {
-    add('Hub configuration', false, 'not joined yet', 'Run /h1:join (h1 join --code XXXX-XXXX --api <board URL>).');
+    add('Hub configuration', false, 'not joined yet', 'Run /c1:join (c1 join --code XXXX-XXXX --api <board URL>).');
   }
 
   const token = cfg?.seatId ? readToken(cfg.seatId) : null;
@@ -51,7 +51,7 @@ export async function doctor({ api: apiFlag } = {}) {
       add('WebSocket to AppSync Events', false, e.message, 'The network may block WebSockets or long connections: switch to an iPhone Personal Hotspot.');
     }
   } else if (cfg) {
-    add('WebSocket to AppSync Events', false, 'no agent token', 'Run h1 join again with a fresh code from the board.');
+    add('WebSocket to AppSync Events', false, 'no agent token', 'Run c1 join again with a fresh code from the board.');
   }
 
   const gh = await reach('https://github.com');

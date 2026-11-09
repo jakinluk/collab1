@@ -23,14 +23,14 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 
-export interface H1StackProps extends StackProps {
+export interface C1StackProps extends StackProps {
   eventEndsAt: string;
   domainPrefix: string;
   dataTtlDays: number;
   removalPolicy: RemovalPolicy;
   version: string;
   boardDir: string;
-  /** Git URL of the HackathonOne repo, used by the fix queue project. Can also be set later in the board. */
+  /** Git URL of the CollabOne repo, used by the fix queue project. Can also be set later in the board. */
   toolRepoUrl?: string;
 }
 
@@ -56,10 +56,10 @@ const managedRule = (name: string, priority: number, overrides: string[] = []): 
   visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: name, sampledRequestsEnabled: true },
 });
 
-export class H1Stack extends Stack {
-  constructor(scope: Construct, id: string, props: H1StackProps) {
+export class C1Stack extends Stack {
+  constructor(scope: Construct, id: string, props: C1StackProps) {
     super(scope, id, props);
-    const runtimeParamName = `/h1/${this.stackName}/runtime`;
+    const runtimeParamName = `/c1/${this.stackName}/runtime`;
     const runtimeParamArn = this.formatArn({ service: 'ssm', resource: 'parameter', resourceName: runtimeParamName.slice(1) });
 
     const table = new dynamodb.Table(this, 'Table', {
@@ -79,12 +79,12 @@ export class H1Stack extends Stack {
     });
 
     const pepper = new secretsmanager.Secret(this, 'TokenPepper', {
-      description: 'HackathonOne: pepper for hashing agent tokens and join codes',
+      description: 'CollabOne: pepper for hashing agent tokens and join codes',
       generateSecretString: { passwordLength: 48, excludePunctuation: true },
       removalPolicy: props.removalPolicy,
     });
     const originVerify = new secretsmanager.Secret(this, 'OriginVerify', {
-      description: 'HackathonOne: header CloudFront adds so the API only answers through CloudFront',
+      description: 'CollabOne: header CloudFront adds so the API only answers through CloudFront',
       generateSecretString: { passwordLength: 40, excludePunctuation: true },
       removalPolicy: props.removalPolicy,
     });
@@ -114,8 +114,8 @@ export class H1Stack extends Stack {
       passwordPolicy: { minLength: 12, requireDigits: true, requireLowercase: true, requireUppercase: true, requireSymbols: false, tempPasswordValidity: Duration.days(3) },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       userInvitation: {
-        emailSubject: 'Your HackathonOne board login',
-        emailBody: 'You are invited to the HackathonOne board. Username: {username} Temporary password: {####} Open the board link your host shared, sign in, then set up an authenticator app.',
+        emailSubject: 'Your CollabOne board login',
+        emailBody: 'You are invited to the CollabOne board. Username: {username} Temporary password: {####} Open the board link your host shared, sign in, then set up an authenticator app.',
       },
       removalPolicy: props.removalPolicy,
     });
@@ -138,7 +138,7 @@ export class H1Stack extends Stack {
         PEPPER_SECRET_ARN: pepper.secretArn,
         ORIGIN_SECRET_ARN: originVerify.secretArn,
         RUNTIME_PARAM: runtimeParamName,
-        H1_VERSION: props.version,
+        C1_VERSION: props.version,
         TOOL_REPO_URL: props.toolRepoUrl ?? '',
       },
     });
@@ -165,16 +165,16 @@ export class H1Stack extends Stack {
     pepper.grantRead(sweepFn);
     sweepFn.addToRolePolicy(readRuntime);
     new scheduler.Schedule(this, 'SweepSchedule', {
-      description: 'HackathonOne sweep: leases, deadlines, contest windows',
+      description: 'CollabOne sweep: leases, deadlines, contest windows',
       schedule: scheduler.ScheduleExpression.rate(Duration.minutes(1)),
       target: new schedulerTargets.LambdaInvoke(sweepFn, { retryAttempts: 0, maxEventAge: Duration.minutes(1) }),
     });
 
-    const httpApi = new apigw.HttpApi(this, 'HttpApi', { description: 'HackathonOne API (reachable only through CloudFront)', createDefaultStage: true });
+    const httpApi = new apigw.HttpApi(this, 'HttpApi', { description: 'CollabOne API (reachable only through CloudFront)', createDefaultStage: true });
     const integration = new HttpLambdaIntegration('ApiIntegration', apiFn);
-    const authorizer = new HttpLambdaAuthorizer('H1Authorizer', authFn, {
+    const authorizer = new HttpLambdaAuthorizer('C1Authorizer', authFn, {
       responseTypes: [HttpLambdaResponseType.SIMPLE],
-      identitySource: ['$request.header.Authorization', '$request.header.x-h1-origin-verify'],
+      identitySource: ['$request.header.Authorization', '$request.header.x-c1-origin-verify'],
       resultsCacheTtl: Duration.seconds(0),
     });
     httpApi.addRoutes({ path: '/api/v1/health', methods: [apigw.HttpMethod.GET], integration });
@@ -195,7 +195,7 @@ export class H1Stack extends Stack {
         defaultSubscribeAuthModeTypes: [appsync.AppSyncAuthorizationType.LAMBDA],
       },
     });
-    const namespace = eventApi.addChannelNamespace('h1', {
+    const namespace = eventApi.addChannelNamespace('c1', {
       authorizationConfig: {
         publishAuthModeTypes: [appsync.AppSyncAuthorizationType.IAM],
         subscribeAuthModeTypes: [appsync.AppSyncAuthorizationType.LAMBDA],
@@ -205,7 +205,7 @@ export class H1Stack extends Stack {
     const fanoutFn = new nodejs.NodejsFunction(
       this,
       'Fanout',
-      fnDefaults('Fanout', 'fanout.ts', 30, 256, { NODE_OPTIONS: '--enable-source-maps', EVENTS_HTTP_HOST: eventApi.httpDns, H1_VERSION: props.version }),
+      fnDefaults('Fanout', 'fanout.ts', 30, 256, { NODE_OPTIONS: '--enable-source-maps', EVENTS_HTTP_HOST: eventApi.httpDns, C1_VERSION: props.version }),
     );
     namespace.grantPublish(fanoutFn);
     fanoutFn.addEventSource(
@@ -222,20 +222,20 @@ export class H1Stack extends Stack {
     const eventsAcl = new wafv2.CfnWebACL(this, 'EventsAcl', {
       scope: 'REGIONAL',
       defaultAction: { allow: {} },
-      visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'h1-events', sampledRequestsEnabled: true },
-      rules: [rateRule('h1-events-rate', 0, 3000)],
+      visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'c1-events', sampledRequestsEnabled: true },
+      rules: [rateRule('c1-events-rate', 0, 3000)],
     });
     new wafv2.CfnWebACLAssociation(this, 'EventsAclAssociation', { resourceArn: eventApi.apiArn, webAclArn: eventsAcl.attrArn });
 
     const edgeAcl = new wafv2.CfnWebACL(this, 'EdgeAcl', {
       scope: 'CLOUDFRONT',
       defaultAction: { allow: {} },
-      visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'h1-edge', sampledRequestsEnabled: true },
+      visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'c1-edge', sampledRequestsEnabled: true },
       rules: [
-        rateRule('h1-join-rate', 0, 100, {
+        rateRule('c1-join-rate', 0, 100, {
           byteMatchStatement: { fieldToMatch: { uriPath: {} }, positionalConstraint: 'STARTS_WITH', searchString: '/api/v1/join', textTransformations: [{ priority: 0, type: 'NONE' }] },
         }),
-        rateRule('h1-rate', 1, 6000),
+        rateRule('c1-rate', 1, 6000),
         managedRule('AWSManagedRulesCommonRuleSet', 2, ['SizeRestrictions_BODY']),
         managedRule('AWSManagedRulesKnownBadInputsRuleSet', 3),
       ],
@@ -266,10 +266,10 @@ export class H1Stack extends Stack {
 
     const apiOrigin = new origins.HttpOrigin(`${httpApi.apiId}.execute-api.${this.region}.${this.urlSuffix}`, {
       protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
-      customHeaders: { 'x-h1-origin-verify': originVerify.secretValue.unsafeUnwrap() },
+      customHeaders: { 'x-c1-origin-verify': originVerify.secretValue.unsafeUnwrap() },
     });
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
-      comment: 'HackathonOne board and API',
+      comment: 'CollabOne board and API',
       defaultRootObject: 'index.html',
       webAclId: edgeAcl.attrArn,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
@@ -309,10 +309,10 @@ export class H1Stack extends Stack {
     });
 
     const loginBase = `https://${props.domainPrefix}.auth.${this.region}.amazoncognito.com`;
-    const events_ = { httpHost: eventApi.httpDns, realtimeUrl: `wss://${eventApi.realtimeDns}/event/realtime`, namespace: 'h1' };
+    const events_ = { httpHost: eventApi.httpDns, realtimeUrl: `wss://${eventApi.realtimeDns}/event/realtime`, namespace: 'c1' };
     new ssm.StringParameter(this, 'RuntimeConfig', {
       parameterName: runtimeParamName,
-      description: 'HackathonOne runtime configuration read by the Lambdas',
+      description: 'CollabOne runtime configuration read by the Lambdas',
       stringValue: JSON.stringify({
         boardUrl,
         apiUrl: `${boardUrl}/api/v1`,
@@ -333,7 +333,7 @@ export class H1Stack extends Stack {
     if (fs.existsSync(props.boardDir) && fs.existsSync(path.join(props.boardDir, 'index.html'))) {
       sources.unshift(s3deploy.Source.asset(props.boardDir, { exclude: ['config.json', 'config.example.json', '*.md', 'test', 'test/**', 'node_modules', 'node_modules/**'] }));
     } else {
-      sources.unshift(s3deploy.Source.data('index.html', '<!doctype html><title>HackathonOne</title><p>Board not built yet.</p>'));
+      sources.unshift(s3deploy.Source.data('index.html', '<!doctype html><title>CollabOne</title><p>Board not built yet.</p>'));
     }
     new s3deploy.BucketDeployment(this, 'DeployBoard', {
       destinationBucket: boardBucket,

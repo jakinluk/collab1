@@ -1,7 +1,7 @@
-/* HackathonOne board: HTTP API client (CONTRACT §4). Human session only: Bearer = Cognito ID token. */
+/* CollabOne board: HTTP API client (CONTRACT §4). Human session only: Bearer = Cognito ID token. */
 (function () {
   'use strict';
-  const H1 = (window.H1 = window.H1 || {});
+  const C1 = (window.C1 = window.C1 || {});
 
   class ApiError extends Error {
     constructor(status, code, message) {
@@ -18,7 +18,7 @@
     },
 
     async request(method, path, body) {
-      const token = await H1.Auth.idToken();
+      const token = await C1.Auth.idToken();
       if (!token) throw new ApiError(401, 'unauthorized', 'Your session expired. Sign in again.');
       const headers = { Authorization: 'Bearer ' + token };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -79,6 +79,6 @@
     revokeToken: (tokenId) => Api.del('/tokens/' + encodeURIComponent(tokenId)),
   };
 
-  H1.Api = Api;
-  H1.ApiError = ApiError;
+  C1.Api = Api;
+  C1.ApiError = ApiError;
 })();

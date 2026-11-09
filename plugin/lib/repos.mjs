@@ -2,13 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { h1Home, readJson, writeJson } from './util.mjs';
+import { c1Home, readJson, writeJson } from './util.mjs';
 
 const TEMPLATES = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'templates');
 const PRESET_FIELDS = ['baseBranch', 'hotPaths', 'contractPaths', 'setup', 'verify', 'instructionsPath', 'laneMap', 'prLabels', 'notes'];
 const LIST_FIELDS = ['hotPaths', 'contractPaths', 'setup', 'verify', 'laneMap', 'prLabels'];
 
-export const reposFile = () => path.join(h1Home(), 'repos.json');
+export const reposFile = () => path.join(c1Home(), 'repos.json');
 
 export function loadPresets() {
   return readJson(path.join(TEMPLATES, 'repo-presets.json'), {}) ?? {};
@@ -146,7 +146,7 @@ export function formatRepo(repo, local) {
   const lines = [
     `repo ${r.name}  ${r.url}`,
     `  branches: base ${r.baseBranch} → integration ${r.integrationBranch}`,
-    `  local:    ${local ? `${local.path}${local.exists === false ? ' (missing!)' : ''}${local.via === 'remote' ? ' (matched by remote)' : ''}` : `not linked (h1 repo link ${r.name} <path>)`}`,
+    `  local:    ${local ? `${local.path}${local.exists === false ? ' (missing!)' : ''}${local.via === 'remote' ? ' (matched by remote)' : ''}` : `not linked (c1 repo link ${r.name} <path>)`}`,
     `  hot paths:      ${listOr(r.hotPaths)}`,
     `  contract paths: ${listOr(r.contractPaths)}`,
     `  setup:  ${listOr(r.setup)}`,

@@ -1,10 +1,10 @@
-/* HackathonOne board: Cognito managed login with authorization code + PKCE. Tokens live in sessionStorage only. */
+/* CollabOne board: Cognito managed login with authorization code + PKCE. Tokens live in sessionStorage only. */
 (function () {
   'use strict';
-  const H1 = (window.H1 = window.H1 || {});
+  const C1 = (window.C1 = window.C1 || {});
 
-  const KEY = 'h1.auth';
-  const PKCE_KEY = 'h1.pkce';
+  const KEY = 'c1.auth';
+  const PKCE_KEY = 'c1.pkce';
 
   function ss() {
     try {
@@ -167,6 +167,6 @@
     },
   };
 
-  H1.Auth = Auth;
-  H1.decodeJwt = decodeJwt;
+  C1.Auth = Auth;
+  C1.decodeJwt = decodeJwt;
 })();

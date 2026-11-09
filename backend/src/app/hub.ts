@@ -92,7 +92,7 @@ export interface HubDeps {
   runtime: () => Promise<RuntimeConfig>;
   eventEndsAt: number;
   now?: () => number;
-  /** Default git URL of the HackathonOne repo for the fix queue; the hub setting overrides it. */
+  /** Default git URL of the CollabOne repo for the fix queue; the hub setting overrides it. */
   toolRepoUrl?: string;
 }
 
@@ -955,7 +955,7 @@ export class Hub {
       ops.push(this.store.put(K.knowledge(retired), retired, previous.v));
     }
     const type = input.kind === 'skill' ? (item.version > 1 ? 'skill.updated' : 'skill.published') : `${input.kind}.shared`;
-    const label = input.kind === 'skill' ? `h1--${item.name} v${item.version}` : input.kind === 'tip' ? 'Tip' : `Playbook "${item.name}" v${item.version}`;
+    const label = input.kind === 'skill' ? `c1--${item.name} v${item.version}` : input.kind === 'tip' ? 'Tip' : `Playbook "${item.name}" v${item.version}`;
     const detail = input.kind === 'tip' ? truncate(item.body ?? '', 150) : item.tags.length ? `tags ${item.tags.join(', ')}` : '';
     await this.store.commit(ops, [
       this.ev(actor, {
@@ -1345,7 +1345,7 @@ export class Hub {
     return next;
   }
 
-  // ---------- HackathonOne fix queue and releases ----------
+  // ---------- CollabOne fix queue and releases ----------
 
   async currentRelease(): Promise<Release | undefined> {
     const now = this.now();
@@ -1362,7 +1362,7 @@ export class Hub {
     if (!rel?.minimum) return;
     const client = clientVersion ?? '0.0.0';
     if (compareVersions(client, rel.minimum) < 0)
-      fail('update_required', `HackathonOne ${client} is too old for this hub: update to ${rel.latest} with /h1:update (minimum ${rel.minimum})`, { client, minimum: rel.minimum, latest: rel.latest });
+      fail('update_required', `CollabOne ${client} is too old for this hub: update to ${rel.latest} with /c1:update (minimum ${rel.minimum})`, { client, minimum: rel.minimum, latest: rel.latest });
   }
 
   private async releasePublish(actor: Actor, p: ActionPayloads['release.publish']): Promise<Release> {
@@ -1376,7 +1376,7 @@ export class Hub {
       [
         this.ev(actor, {
           type: 'tool.released',
-          summary: `HackathonOne ${p.version} released${p.minimum ? ` (required: update before your next change)` : ''}: ${truncate(p.notes, 140)}`,
+          summary: `CollabOne ${p.version} released${p.minimum ? ` (required: update before your next change)` : ''}: ${truncate(p.notes, 140)}`,
           data: { version: p.version, minimum: minimum ?? null, notes: p.notes },
         }),
       ],
@@ -1388,14 +1388,14 @@ export class Hub {
   private async ensureToolProject(actor: Actor): Promise<void> {
     if (await this.store.get<Project>(K.project(TOOL_PROJECT_ID))) return;
     const url = (await this.settings()).value.toolRepoUrl ?? this.deps.toolRepoUrl;
-    if (!url) fail('invalid', 'the fix queue needs the HackathonOne repo URL: an organizer sets it in the board (Settings → HackathonOne repo)');
+    if (!url) fail('invalid', 'the fix queue needs the CollabOne repo URL: an organizer sets it in the board (Settings → CollabOne repo)');
     try {
       await this.projectCreate(actor, {
         id: TOOL_PROJECT_ID,
-        name: 'HackathonOne fixes',
+        name: 'CollabOne fixes',
         repos: [toolRepo(url as string)] as ActionPayloads['project.create']['repos'],
         lanes: ['plugin', 'board', 'backend', 'docs'],
-        description: 'Problems with HackathonOne itself, reported from any session with /h1:bug. Pin to this project to fix them.',
+        description: 'Problems with CollabOne itself, reported from any session with /c1:bug. Pin to this project to fix them.',
         links: [],
         tags: ['tooling'],
       });
@@ -1413,7 +1413,7 @@ export class Hub {
     const reporter = actor.workerId ? `${actor.seatId}/${actor.workerId}` : actor.seatId;
     const description = [b.detail, `Reported by ${reporter} (${actor.kind})${b.ticketId ? ` while working on ${b.ticketId}` : ''}. Area: ${b.area}.`].filter(Boolean).join('\n\n');
     return this.createTicket(actor, TOOL_PROJECT_ID, {
-      repo: 'hakatonOne',
+      repo: 'collab1',
       title: `Fix: ${b.summary}`,
       description,
       type: 'chore',

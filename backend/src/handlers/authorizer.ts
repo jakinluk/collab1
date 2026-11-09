@@ -42,7 +42,7 @@ export const resolveIdentity = async (rawToken: string | undefined, deps: { agen
     const a = await deps.agent(token);
     return a ? { seatId: a.seatId, kind: 'agent', workerId: a.workerId } : undefined;
   }
-  if (token.startsWith('h1a_')) return undefined;
+  if (token.startsWith('c1a_')) return undefined;
   const h = await deps.human(token);
   if (!h) return undefined;
   return { seatId: (await deps.seatForSub(h.sub)) ?? '', kind: 'human', sub: h.sub, email: h.email };
@@ -50,10 +50,10 @@ export const resolveIdentity = async (rawToken: string | undefined, deps: { agen
 
 export const channelAllowed = (channel: string | null | undefined, identity: Identity): boolean => {
   if (!channel || !identity.seatId) return false;
-  if (channel === '/h1/all' || channel === '/h1/p/*') return true;
-  const p = /^\/h1\/p\/([a-z0-9-]{2,40})$/.exec(channel);
+  if (channel === '/c1/all' || channel === '/c1/p/*') return true;
+  const p = /^\/c1\/p\/([a-z0-9-]{2,40})$/.exec(channel);
   if (p) return true;
-  const s = /^\/h1\/s\/([a-z0-9-]{2,40})$/.exec(channel);
+  const s = /^\/c1\/s\/([a-z0-9-]{2,40})$/.exec(channel);
   return Boolean(s && s[1] === identity.seatId);
 };
 
@@ -87,7 +87,7 @@ export const handler = async (event: HttpAuthorizerEvent | EventsAuthorizerEvent
   try {
     if (isEventsEvent(event)) return eventsDecision(event, await resolveIdentity(event.authorizationToken, deps));
     const headers = Object.fromEntries(Object.entries(event.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
-    if (!safeEqual(headers['x-h1-origin-verify'], await originSecret())) return { isAuthorized: false };
+    if (!safeEqual(headers['x-c1-origin-verify'], await originSecret())) return { isAuthorized: false };
     const identity = await resolveIdentity(headers.authorization, deps);
     if (!identity) return { isAuthorized: false };
     return {

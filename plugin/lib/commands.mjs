@@ -35,7 +35,7 @@ function ctx(flags) {
   const projectId = typeof flags.project === 'string' ? flags.project : cfg.projectId;
   return { cfg, api, projectId };
 }
-const needProject = (projectId) => projectId || fail('no project: pass --project <id> or pin one with h1 me pin <id>');
+const needProject = (projectId) => projectId || fail('no project: pass --project <id> or pin one with c1 me pin <id>');
 
 const ticketLine = (t) =>
   [t.id, t.status, truncate(t.title, 60), (t.lanes ?? []).join(','), t.booking ? `${t.booking.seatId}${t.booking.workerId ? '/' + t.booking.workerId : ''}` : '', `p${t.priority}${t.wave !== undefined ? ' w' + t.wave : ''}`];
@@ -72,9 +72,9 @@ export async function join(flags) {
   return {
     data: { seatId: cfg.seatId, projectId: cfg.projectId, apiUrl: cfg.apiUrl, boardUrl: cfg.boardUrl, tokenStoredIn: where },
     text: [
-      `Joined as ${cfg.seatId}. Agent token stored in the ${where === 'keychain' ? 'macOS Keychain' : `file ${path.join(process.env.H1_HOME || '~/.h1', 'token')} (mode 600)`}.`,
-      cfg.projectId ? `Pinned project: ${cfg.projectId}.` : 'No project yet: run h1 project list, then h1 me pin <project>.',
-      'Next: h1 doctor, then h1 me mode <solo|subagents|multi_session|factory> and h1 me lanes <a,b>.',
+      `Joined as ${cfg.seatId}. Agent token stored in the ${where === 'keychain' ? 'macOS Keychain' : `file ${path.join(process.env.C1_HOME || '~/.c1', 'token')} (mode 600)`}.`,
+      cfg.projectId ? `Pinned project: ${cfg.projectId}.` : 'No project yet: run c1 project list, then c1 me pin <project>.',
+      'Next: c1 doctor, then c1 me mode <solo|subagents|multi_session|factory> and c1 me lanes <a,b>.',
       'Restart Claude Code in the project so the monitor and hooks pick up the new configuration.',
     ].join('\n'),
   };
@@ -96,19 +96,19 @@ export async function me(pos, flags) {
     };
   }
   let patch;
-  if (sub === 'mode') patch = { workMode: need(value, 'h1 me mode <solo|subagents|multi_session|factory>') };
-  else if (sub === 'autopilot') patch = { autopilot: /^(on|true|1|yes)$/i.test(need(value, 'h1 me autopilot on|off')) };
+  if (sub === 'mode') patch = { workMode: need(value, 'c1 me mode <solo|subagents|multi_session|factory>') };
+  else if (sub === 'autopilot') patch = { autopilot: /^(on|true|1|yes)$/i.test(need(value, 'c1 me autopilot on|off')) };
   else if (sub === 'lanes') patch = { lanes: list(value ?? '') };
-  else if (sub === 'limit') patch = { maxConcurrentBookings: /^(none|off|0)$/i.test(need(value, 'h1 me limit <n|none>')) ? null : Number(value) };
+  else if (sub === 'limit') patch = { maxConcurrentBookings: /^(none|off|0)$/i.test(need(value, 'c1 me limit <n|none>')) ? null : Number(value) };
   else if (sub === 'pin') {
-    const pid = need(value, 'h1 me pin <project>');
+    const pid = need(value, 'c1 me pin <project>');
     if (cfg.projectId && cfg.projectId !== pid) {
       const { tickets } = await api.get(`/projects/${enc(cfg.projectId)}/tickets`);
       for (const t of (tickets ?? []).filter((x) => x.booking?.seatId === cfg.seatId && ['booked', 'in_progress'].includes(x.status)))
         await api.post(`/tickets/${enc(t.id)}/release`, { reason: `seat re-pinned to ${pid}`, failed: false });
     }
     patch = { pinProject: pid };
-  } else return fail(`unknown: h1 me ${sub}`);
+  } else return fail(`unknown: c1 me ${sub}`);
   const seat = await api.patch('/me', patch);
   saveConfig({ ...cfg, projectId: seat.projects?.[0] ?? cfg.projectId, workMode: seat.workMode, lanes: seat.lanes ?? [] });
   return { data: seat, text: `Updated: ${Object.keys(patch).join(', ')}.` };
@@ -116,7 +116,7 @@ export async function me(pos, flags) {
 
 export async function status() {
   const cfg = loadConfig();
-  if (!cfg) return { data: { joined: false }, text: 'Not joined. Run /h1:join.' };
+  if (!cfg) return { data: { joined: false }, text: 'Not joined. Run /c1:join.' };
   const { api } = clientFromConfig();
   const health = await api.get('/health', { noAuth: true }).catch((e) => ({ ok: false, error: e.message }));
   const r = await api.get('/me');
@@ -217,7 +217,7 @@ export async function project(pos, flags) {
     return { data: projects, text: table((projects ?? []).map((p) => [p.id, p.name, p.status, p.phase, (p.repos ?? []).map((r) => r.name).join(',')]), ['id', 'name', 'status', 'phase', 'repos']) };
   }
   if (sub === 'show') {
-    const pid = typeof id === 'string' ? id : cfg.projectId ?? fail('h1 project show <id>');
+    const pid = typeof id === 'string' ? id : cfg.projectId ?? fail('c1 project show <id>');
     const p = await fetchProject(api, pid);
     return { data: p, text: formatProject(p, (r) => resolveRepoPath(pid, r)) };
   }
@@ -227,7 +227,7 @@ export async function project(pos, flags) {
     return { data: r, text: printProposal(r) };
   }
   if (sub === 'propose-update' || sub === 'update') {
-    const pid = need(id, 'h1 project propose-update <id> --file project.json');
+    const pid = need(id, 'c1 project propose-update <id> --file project.json');
     const payload = buildProjectPayload(flags, { forUpdate: true, projectId: pid });
     if (Object.keys(payload).length <= 1) fail('nothing to update: pass --file, --description, --link, --tag, --lane, --repo or --name');
     const r = await propose(api, 'project.update', payload, `Update project ${pid}: ${Object.keys(payload).filter((k) => k !== 'projectId').join(', ')}`);
@@ -235,16 +235,16 @@ export async function project(pos, flags) {
   }
   if (['freeze', 'archive', 'activate', 'demo'].includes(sub)) {
     const statusMap = { freeze: 'frozen', archive: 'archived', activate: 'active', demo: 'demo' };
-    const pid = need(id, `h1 project ${sub} <id>`);
+    const pid = need(id, `c1 project ${sub} <id>`);
     const r = await propose(api, 'project.status', { projectId: pid, status: statusMap[sub] }, `Set ${pid} to ${statusMap[sub]}`);
     return { data: r, text: printProposal(r) };
   }
   if (sub === 'phase') {
     const [, pid, phase] = pos;
-    const r = await propose(api, 'project.phase', { projectId: need(pid, 'h1 project phase <id> <plan|build|freeze|demo>'), phase: need(phase, 'phase required') }, `${pid} phase → ${phase}`);
+    const r = await propose(api, 'project.phase', { projectId: need(pid, 'c1 project phase <id> <plan|build|freeze|demo>'), phase: need(phase, 'phase required') }, `${pid} phase → ${phase}`);
     return { data: r, text: printProposal(r) };
   }
-  return fail(`unknown: h1 project ${sub}`);
+  return fail(`unknown: c1 project ${sub}`);
 }
 
 // ---------- repos (local checkouts, never sent to the hub) ----------
@@ -264,11 +264,11 @@ export async function repo(pos, flags) {
       return { data: p.repos.map((r) => ({ ...r, local: resolveRepoPath(pid, r) })), text: rows.length ? table(rows, ['repo', 'url', 'branches', 'local']) : `Project ${pid} has no repos.` };
     }
     case 'show': {
-      const r = find(need(name, 'h1 repo show <name>'));
+      const r = find(need(name, 'c1 repo show <name>'));
       return { data: { ...r, local: resolveRepoPath(pid, r) }, text: formatRepo(r, resolveRepoPath(pid, r)) };
     }
     case 'link': {
-      const r = find(need(name, 'h1 repo link <name> [path]'));
+      const r = find(need(name, 'c1 repo link <name> [path]'));
       const target = path.resolve(typeof dir === 'string' ? dir : process.cwd());
       if (!fs.existsSync(target)) fail(`${target} does not exist`);
       const top = gitToplevel(target) ?? fail(`${target} is not inside a git checkout`);
@@ -278,19 +278,19 @@ export async function repo(pos, flags) {
       return { data: { project: pid, repo: r.name, path: saved, remote }, text: `Linked ${r.name} → ${saved}${warn}` };
     }
     case 'unlink': {
-      const n = need(name, 'h1 repo unlink <name>');
+      const n = need(name, 'c1 repo unlink <name>');
       const removed = unlinkRepo(pid, n);
       return { data: { removed }, text: removed ? `Unlinked ${n}.` : `${n} was not linked.` };
     }
     case 'path': {
-      const r = find(need(name, 'h1 repo path <name>'));
+      const r = find(need(name, 'c1 repo path <name>'));
       const local = resolveRepoPath(pid, r);
-      if (!local) return { data: null, text: `${r.name} is not linked on this Mac. Run: h1 repo link ${r.name} <path to your checkout of ${r.url}>`, exit: 2 };
+      if (!local) return { data: null, text: `${r.name} is not linked on this Mac. Run: c1 repo link ${r.name} <path to your checkout of ${r.url}>`, exit: 2 };
       if (local.via === 'remote') linkRepo(pid, r.name, local.path);
       return { data: local, text: local.path, exit: local.exists === false ? 2 : 0 };
     }
     default:
-      return fail(`unknown: h1 repo ${sub} (list | show <name> | link <name> [path] | unlink <name> | path <name>)`);
+      return fail(`unknown: c1 repo ${sub} (list | show <name> | link <name> [path] | unlink <name> | path <name>)`);
   }
 }
 
@@ -299,7 +299,7 @@ export async function goal(pos, flags) {
   const pid = needProject(projectId);
   if (!pos[0] || pos[0] === 'show') {
     const { goal: g } = await api.get(`/projects/${enc(pid)}/goal`);
-    if (!g) return { data: null, text: `${pid} has no goal yet. Draft one and run h1 goal propose --file goal.json.` };
+    if (!g) return { data: null, text: `${pid} has no goal yet. Draft one and run c1 goal propose --file goal.json.` };
     return {
       data: g,
       text: [`Goal v${g.version} (${pid}): ${g.statement}`, 'Definition of done:', ...g.definitionOfDone.map((d, i) => `  ${i}. ${d}`), g.demoScript ? `Demo script:\n${g.demoScript}` : '', g.nonGoals?.length ? `Non-goals: ${g.nonGoals.join('; ')}` : '']
@@ -312,13 +312,13 @@ export async function goal(pos, flags) {
     const r = await propose(api, 'goal.set', { ...body, projectId: pid }, `Goal for ${pid}: ${body.statement ?? ''}`);
     return { data: r, text: printProposal(r) };
   }
-  return fail(`unknown: h1 goal ${pos[0]}`);
+  return fail(`unknown: c1 goal ${pos[0]}`);
 }
 
 export async function plan(pos, flags) {
   const { api, projectId } = ctx(flags);
   const pid = needProject(projectId);
-  if (pos[0] !== 'propose') return fail('usage: h1 plan propose --file tasks.json [--project <id>]');
+  if (pos[0] !== 'propose') return fail('usage: c1 plan propose --file tasks.json [--project <id>]');
   const body = readFileJson(flags.file);
   const tickets = Array.isArray(body) ? body : body.tickets ?? fail('the file must be an array of tickets or { "tickets": [...] }');
   const r = await propose(api, 'plan.load', { projectId: pid, tickets }, `Plan for ${pid}: ${tickets.length} tickets`);
@@ -354,7 +354,7 @@ export async function rules(pos, flags) {
       : await propose(api, 'rules.set', { code, patch }, `Change rule ${code}: ${Object.keys(patch).join(', ')}`);
     return { data: r, text: printProposal(r) };
   }
-  return fail(`unknown: h1 rules ${pos[0]}`);
+  return fail(`unknown: c1 rules ${pos[0]}`);
 }
 
 // ---------- tickets ----------
@@ -374,7 +374,7 @@ export async function ticket(pos, flags) {
       return { data: tickets, text: table((tickets ?? []).map(ticketLine), ['id', 'status', 'title', 'lanes', 'owner', 'prio']) };
     }
     case 'show': {
-      const r = await api.get(`/tickets/${enc(need(tid, 'h1 ticket show <id>'))}`);
+      const r = await api.get(`/tickets/${enc(need(tid, 'c1 ticket show <id>'))}`);
       const t = r.ticket ?? {};
       let rp = r.repo;
       if (!rp && t.repo && t.projectId) rp = (await fetchProject(api, t.projectId).catch(() => ({ repos: [] }))).repos.find((x) => x.name === t.repo);
@@ -393,42 +393,42 @@ export async function ticket(pos, flags) {
       if (typeof flags.worker === 'string') body.workerId = flags.worker;
       if (sessionId) body.sessionId = sessionId;
       const { booked } = await api.post('/tickets/next', body);
-      if (!booked?.length) throw new ApiError(409, 'not_ready', 'no ready ticket for you right now (check h1 review next, open help requests, or wait for the monitor)');
+      if (!booked?.length) throw new ApiError(409, 'not_ready', 'no ready ticket for you right now (check c1 review next, open help requests, or wait for the monitor)');
       addSessionTickets(sessionId, booked.map((t) => t.id));
-      return { data: booked, text: booked.map((t) => `Booked ${t.id}: ${t.title}\n  branch ${t.branch ?? '—'} · repo ${t.repo} · owns ${(t.pathsOwned ?? []).join(', ')}\n  next: /h1:work ${t.id}`).join('\n') };
+      return { data: booked, text: booked.map((t) => `Booked ${t.id}: ${t.title}\n  branch ${t.branch ?? '—'} · repo ${t.repo} · owns ${(t.pathsOwned ?? []).join(', ')}\n  next: /c1:work ${t.id}`).join('\n') };
     }
     case 'book': {
       const body = {};
       if (typeof flags.worker === 'string') body.workerId = flags.worker;
       if (sessionId) body.sessionId = sessionId;
-      const t = await api.post(`/tickets/${enc(need(tid, 'h1 ticket book <id>'))}/book`, body);
+      const t = await api.post(`/tickets/${enc(need(tid, 'c1 ticket book <id>'))}/book`, body);
       addSessionTickets(sessionId, [t.id]);
       return { data: t, text: `Booked ${t.id}: ${t.title} (branch ${t.branch ?? '—'})` };
     }
     case 'heartbeat': {
-      const r = await api.post(`/tickets/${enc(need(tid, 'h1 ticket heartbeat <id>'))}/heartbeat`, sessionId ? { sessionId } : {});
+      const r = await api.post(`/tickets/${enc(need(tid, 'c1 ticket heartbeat <id>'))}/heartbeat`, sessionId ? { sessionId } : {});
       return { data: r, text: `Lease extended until ${new Date(r.leaseExpiresAt).toLocaleTimeString()}` };
     }
     case 'start': {
-      const t = await api.post(`/tickets/${enc(need(tid, 'h1 ticket start <id>'))}/status`, { status: 'in_progress', ...(flags.note ? { note: String(flags.note) } : {}) });
+      const t = await api.post(`/tickets/${enc(need(tid, 'c1 ticket start <id>'))}/status`, { status: 'in_progress', ...(flags.note ? { note: String(flags.note) } : {}) });
       return { data: t, text: `${t.id} in progress` };
     }
     case 'review-ready': {
-      const t = await api.post(`/tickets/${enc(need(tid, 'h1 ticket review-ready <id> --pr <url>'))}/status`, { status: 'review', prUrl: need(flags.pr, '--pr <url> is required'), ...(flags.note ? { note: String(flags.note) } : {}) });
+      const t = await api.post(`/tickets/${enc(need(tid, 'c1 ticket review-ready <id> --pr <url>'))}/status`, { status: 'review', prUrl: need(flags.pr, '--pr <url> is required'), ...(flags.note ? { note: String(flags.note) } : {}) });
       return { data: t, text: `${t.id} ready for review (${t.prUrl})` };
     }
     case 'block': {
-      const t = await api.post(`/tickets/${enc(need(tid, 'h1 ticket block <id> --note'))}/status`, { status: 'blocked', note: String(need(flags.note, '--note is required')) });
-      return { data: t, text: `${t.id} blocked. Raise the blocker too: h1 raise blocker --rule <code> --ticket ${t.id} --summary ...` };
+      const t = await api.post(`/tickets/${enc(need(tid, 'c1 ticket block <id> --note'))}/status`, { status: 'blocked', note: String(need(flags.note, '--note is required')) });
+      return { data: t, text: `${t.id} blocked. Raise the blocker too: c1 raise blocker --rule <code> --ticket ${t.id} --summary ...` };
     }
     case 'release': {
-      const id = need(tid, 'h1 ticket release <id> --reason');
+      const id = need(tid, 'c1 ticket release <id> --reason');
       const t = await api.post(`/tickets/${enc(id)}/release`, { reason: String(need(flags.reason, '--reason is required')), failed: !!flags.failed });
       removeSessionTicket(sessionId, id);
       return { data: t, text: `${t.id} released (attempts ${t.attempts})` };
     }
     default:
-      return fail(`unknown: h1 ticket ${sub}`);
+      return fail(`unknown: c1 ticket ${sub}`);
   }
 }
 
@@ -445,7 +445,7 @@ export async function review(pos, flags) {
     for (const t of cands) {
       try {
         const r = await api.post(`/tickets/${enc(t.id)}/review/book`, typeof flags.worker === 'string' ? { workerId: flags.worker } : {});
-        return { data: r, text: `Reviewing ${r.id}: ${r.title}\n  PR ${r.prUrl ?? '—'}\n  next: /h1:review ${r.id}` };
+        return { data: r, text: `Reviewing ${r.id}: ${r.title}\n  PR ${r.prUrl ?? '—'}\n  next: /c1:review ${r.id}` };
       } catch (e) {
         if (!(e instanceof ApiError) || e.status !== 409) throw e;
       }
@@ -454,23 +454,23 @@ export async function review(pos, flags) {
   }
   if (sub === 'done') {
     const outcome = need(flags.outcome, '--outcome merged|changes_requested is required');
-    const t = await api.post(`/tickets/${enc(need(tid, 'h1 review done <id> --outcome'))}/review/done`, { outcome, ...(flags.note ? { note: String(flags.note) } : {}), ...(flags.pr ? { prUrl: String(flags.pr) } : {}) });
+    const t = await api.post(`/tickets/${enc(need(tid, 'c1 review done <id> --outcome'))}/review/done`, { outcome, ...(flags.note ? { note: String(flags.note) } : {}), ...(flags.pr ? { prUrl: String(flags.pr) } : {}) });
     return { data: t, text: `${t.id} → ${t.status}` };
   }
-  return fail(`unknown: h1 review ${sub}`);
+  return fail(`unknown: c1 review ${sub}`);
 }
 
 // ---------- escalations / decisions ----------
 
 export async function raise(pos, flags) {
   const { api, projectId } = ctx(flags);
-  const kind = need(pos[0], 'h1 raise blocker|issue|urgent|help --rule <code> --summary ...');
+  const kind = need(pos[0], 'c1 raise blocker|issue|urgent|help --rule <code> --summary ...');
   if (!['blocker', 'issue', 'urgent', 'help'].includes(kind)) fail(`kind must be blocker, issue, urgent or help`);
   const detail = flags['detail-file'] ? readText(flags['detail-file']) : typeof flags.detail === 'string' ? flags.detail : '';
   const body = {
     kind,
     projectId: needProject(projectId),
-    ruleCode: String(need(flags.rule, '--rule <code> is required (classify against h1 rules show)')).toUpperCase(),
+    ruleCode: String(need(flags.rule, '--rule <code> is required (classify against c1 rules show)')).toUpperCase(),
     summary: String(need(flags.summary, '--summary is required')),
     detail,
     ...(typeof flags.ticket === 'string' ? { ticketId: flags.ticket } : {}),
@@ -486,7 +486,7 @@ export async function raise(pos, flags) {
 
 export async function answer(pos, flags) {
   const { api } = clientFromConfig();
-  const e = await api.post(`/escalations/${enc(need(pos[0], 'h1 answer <eid> --text ...'))}/answer`, { text: String(need(flags.text, '--text is required')) });
+  const e = await api.post(`/escalations/${enc(need(pos[0], 'c1 answer <eid> --text ...'))}/answer`, { text: String(need(flags.text, '--text is required')) });
   return { data: e, text: `${e.id} → ${e.status}` };
 }
 
@@ -504,7 +504,7 @@ export async function decide(pos, flags) {
     };
   }
   if (sub === 'show') {
-    const d = await api.get(`/decisions/${enc(need(did, 'h1 decide show <id>'))}`);
+    const d = await api.get(`/decisions/${enc(need(did, 'c1 decide show <id>'))}`);
     return {
       data: d,
       text: [`${d.id}: ${d.question}`, `Options: ${d.options.map((o, i) => `${i + 1}) ${o}`).join('  ')}`, `Rule ${d.rule}, quorum ${d.quorum}, default "${d.defaultOption}", deadline ${new Date(d.deadline).toLocaleTimeString()}`, d.context ? `Context: ${d.context}` : '', ...(d.votes ?? []).map((v) => `  ${v.seat} (${v.by}): ${v.option} — ${v.why}`)]
@@ -513,13 +513,13 @@ export async function decide(pos, flags) {
     };
   }
   if (sub === 'vote') {
-    let opt = need(option, 'h1 decide vote <id> <option> --why ...');
+    let opt = need(option, 'c1 decide vote <id> <option> --why ...');
     const d0 = await api.get(`/decisions/${enc(need(did, 'decision id required'))}`);
     if (/^\d+$/.test(opt) && d0.options[Number(opt) - 1]) opt = d0.options[Number(opt) - 1];
     const d = await api.post(`/decisions/${enc(did)}/vote`, { option: opt, why: typeof flags.why === 'string' ? flags.why : '' });
     return { data: d, text: `Voted "${opt}" on ${d.id} (${d.votes?.length ?? 0} votes so far)` };
   }
-  return fail(`unknown: h1 decide ${sub}`);
+  return fail(`unknown: c1 decide ${sub}`);
 }
 
 // ---------- knowledge ----------
@@ -531,40 +531,40 @@ export async function share(pos, flags) {
   const [kind, arg] = pos;
   const tags = list(flags.tags ?? flags.tag);
   if (kind === 'tip') {
-    const body = String(need(arg, 'h1 share tip "text"'));
+    const body = String(need(arg, 'c1 share tip "text"'));
     const hits = scanSecrets(body);
     if (hits.length) fail(`refusing to share: possible secrets (${hits.map((h) => h.type).join(', ')})`);
     const item = await api.post('/knowledge', { kind: 'tip', name: typeof flags.name === 'string' ? flags.name : truncate(body, 60), tags, scope: scopeOf(flags), body });
     return { data: item, text: `Shared tip ${item.id}` };
   }
   if (kind === 'playbook') {
-    const body = readText(need(arg, 'h1 share playbook <file.md> --name ...'));
+    const body = readText(need(arg, 'c1 share playbook <file.md> --name ...'));
     const hits = scanSecrets(body);
     if (hits.length) fail(`refusing to share: possible secrets (${hits.map((h) => `${h.type} ${h.preview}`).join(', ')})`);
     const item = await api.post('/knowledge', { kind: 'playbook', name: String(need(flags.name, '--name is required')), tags, scope: scopeOf(flags), body });
     return { data: item, text: `Shared playbook ${item.id} v${item.version}` };
   }
   if (kind === 'skill') {
-    const dir = path.resolve(need(arg, 'h1 share skill <dir>'));
+    const dir = path.resolve(need(arg, 'c1 share skill <dir>'));
     const fmName = /^---\s*\n[\s\S]*?^name:\s*["']?([^"'\n]+?)["']?\s*$/m.exec(fs.existsSync(path.join(dir, 'SKILL.md')) ? fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8') : '')?.[1];
     const name = (typeof flags.name === 'string' ? flags.name : fmName ?? path.basename(dir)).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
     if (!/^[a-z0-9][a-z0-9-]{1,60}$/.test(name)) fail(`skill name ${name} must match [a-z0-9-]`);
     const item = await shareSkill(api, dir, { name, tags, scope: scopeOf(flags) });
-    return { data: item, text: `Published skill ${name} v${item.version} (${item.id}); every Mac syncs it to ~/.claude/skills/h1--${name}/` };
+    return { data: item, text: `Published skill ${name} v${item.version} (${item.id}); every Mac syncs it to ~/.claude/skills/c1--${name}/` };
   }
   if (kind === 'retire') return retire([arg]);
-  return fail('usage: h1 share tip "text" | playbook <file> --name ... | skill <dir> [--name] | retire <kid>');
+  return fail('usage: c1 share tip "text" | playbook <file> --name ... | skill <dir> [--name] | retire <kid>');
 }
 
 export async function retire(pos) {
   const { api } = clientFromConfig();
-  const k = await api.post(`/knowledge/${enc(need(pos[0], 'h1 retire <kid>'))}/retire`, {});
+  const k = await api.post(`/knowledge/${enc(need(pos[0], 'c1 retire <kid>'))}/retire`, {});
   return { data: k, text: `${k.id} (${k.name}) retired` };
 }
 
 export async function kb(pos) {
   const { api } = clientFromConfig();
-  if (pos[0] !== 'search') return fail('usage: h1 kb search <words>');
+  if (pos[0] !== 'search') return fail('usage: c1 kb search <words>');
   const words = pos.slice(1).map((w) => w.toLowerCase());
   const { items } = await api.get('/knowledge?status=active');
   const hits = (items ?? []).filter((k) => {
@@ -588,7 +588,7 @@ export async function sync() {
 
 export async function say(pos, flags) {
   const { api } = clientFromConfig();
-  const text = need(pos.join(' '), 'h1 say "text" [--to seat]');
+  const text = need(pos.join(' '), 'c1 say "text" [--to seat]');
   await api.post('/messages', { to: typeof flags.to === 'string' ? flags.to : 'all', text, ...(typeof flags.project === 'string' ? { projectId: flags.project } : {}) });
   return { data: { ok: true }, text: 'Sent.' };
 }
@@ -600,7 +600,7 @@ export async function board(pos, flags) {
   const by = Object.fromEntries(cols.map((c) => [c, []]));
   for (const t of b.tickets ?? []) (by[t.status] ??= []).push(t);
   const lines = [];
-  lines.push(`HackathonOne · ${b.project?.name ?? projectId ?? 'no project'} · phase ${b.project?.phase ?? '—'} · seq ${b.lastSeq}`);
+  lines.push(`CollabOne · ${b.project?.name ?? projectId ?? 'no project'} · phase ${b.project?.phase ?? '—'} · seq ${b.lastSeq}`);
   if (b.goal) lines.push(`Goal v${b.goal.version}: ${truncate(b.goal.statement, 160)}`);
   lines.push('');
   for (const c of cols) {

@@ -46,8 +46,8 @@ export const list = (v) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
-export const h1Home = () => process.env.H1_HOME || path.join(os.homedir(), '.h1');
-export const skillsDir = () => process.env.H1_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills');
+export const c1Home = () => process.env.C1_HOME || path.join(os.homedir(), '.c1');
+export const skillsDir = () => process.env.C1_SKILLS_DIR || path.join(os.homedir(), '.claude', 'skills');
 
 export function ensureDir(dir, mode = 0o700) {
   fs.mkdirSync(dir, { recursive: true, mode });

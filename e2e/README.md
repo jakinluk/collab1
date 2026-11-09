@@ -4,18 +4,18 @@ Both suites start their own local hub (`backend/scripts/local-hub.ts`) on a free
 
 | Suite | Command | What it drives |
 |---|---|---|
-| CLI | `bash e2e/cli-e2e.sh` | the real `h1` CLI and hooks for two seats (ania, bob), with both `h1 watch` monitors running |
+| CLI | `bash e2e/cli-e2e.sh` | the real `c1` CLI and hooks for two seats (ania, bob), with both `c1 watch` monitors running |
 | Board | `cd e2e && npm ci && node board-e2e.mjs [--headed]` | the real board in Google Chrome (Playwright, channel `chrome`), with a real CLI seat on the agent side |
 
 Set `PORT` to move the hub (defaults: 8791 for the CLI suite, 8792 for the board suite). The board suite writes screenshots to a temp folder, or to `SHOTS=<dir>`.
 
 ## What the CLI suite checks
 
-Seats and join codes (single use; agents cannot mint them); `h1 doctor`'s hub checks; project, goal and plan through proposals (agents cannot approve; a plan that breaks the repo's contract paths is refused when proposed); booking, the double-booking conflict, the PreToolUse guard (allow, block on a protected path, warn Claude through `additionalContext`), review and merge, dependents becoming ready; B4 resolve → contest → human vote, a B1 agent vote, a ticket staying parked until every blocker on it has closed; B3 help and an agent answer; tips, playbooks, a skill synced into the other seat's `~/.claude/skills`, the secret scan, search, DMs and their privacy in event catch-up; the SessionStart, Stop (autopilot), Notification and heartbeat hooks; lease expiry; the HackathonOne fix queue (`h1 bug`, secrets refused, area paths) and releases (proposal and approval, the `UPDATE` monitor line, `h1 version`, a minimum version blocking old agents' writes but not reads, the SessionStart warning, `h1 update` on an in-place install). Every monitor notification it expects is read from the `h1 watch` output.
+Seats and join codes (single use; agents cannot mint them); `c1 doctor`'s hub checks; project, goal and plan through proposals (agents cannot approve; a plan that breaks the repo's contract paths is refused when proposed); booking, the double-booking conflict, the PreToolUse guard (allow, block on a protected path, warn Claude through `additionalContext`), review and merge, dependents becoming ready; B4 resolve → contest → human vote, a B1 agent vote, a ticket staying parked until every blocker on it has closed; B3 help and an agent answer; tips, playbooks, a skill synced into the other seat's `~/.claude/skills`, the secret scan, search, DMs and their privacy in event catch-up; the SessionStart, Stop (autopilot), Notification and heartbeat hooks; lease expiry; the CollabOne fix queue (`c1 bug`, secrets refused, area paths) and releases (proposal and approval, the `UPDATE` monitor line, `c1 version`, a minimum version blocking old agents' writes but not reads, the SessionStart warning, `c1 update` on an in-place install). Every monitor notification it expects is read from the `c1 watch` output.
 
 ## What the board suite checks
 
-Cognito-style sign-in with PKCE, seat creation, a proposal arriving live and being approved, event history on load, goal and plan approval, a CLI booking moving a card live, resolving a B4 from the board, a second human contesting it from another browser and the vote, editing a rule, creating a join code and joining with it, creating a project in the board editor (including its validation), setting the HackathonOne repo in Settings so a CLI bug opens the fix queue, and publishing a release that shows a banner on another open board. It fails on any uncaught page error.
+Cognito-style sign-in with PKCE, seat creation, a proposal arriving live and being approved, event history on load, goal and plan approval, a CLI booking moving a card live, resolving a B4 from the board, a second human contesting it from another browser and the vote, editing a rule, creating a join code and joining with it, creating a project in the board editor (including its validation), setting the CollabOne repo in Settings so a CLI bug opens the fix queue, and publishing a release that shows a banner on another open board. It fails on any uncaught page error.
 
 ## What only a real deploy can check
 

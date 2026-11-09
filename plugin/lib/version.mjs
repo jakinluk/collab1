@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 export const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 let cached;
-/** The installed plugin version from .claude-plugin/plugin.json (H1_CLIENT_VERSION overrides it, for tests). */
+/** The installed plugin version from .claude-plugin/plugin.json (C1_CLIENT_VERSION overrides it, for tests). */
 export function clientVersion() {
-  if (process.env.H1_CLIENT_VERSION) return process.env.H1_CLIENT_VERSION;
+  if (process.env.C1_CLIENT_VERSION) return process.env.C1_CLIENT_VERSION;
   if (cached) return cached;
   try {
     cached = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version || '0.0.0';

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Runs a heavy command (unit tests, type-check) while holding one of N machine-wide slots,
 # so parallel Claude sessions on one Mac take turns instead of exhausting RAM.
-# Usage: test-lock.sh <command> [args...]   Slots: H1_LOCK_SLOTS (default 1).
+# Usage: test-lock.sh <command> [args...]   Slots: C1_LOCK_SLOTS (default 1).
 set -u
-slots="${H1_LOCK_SLOTS:-1}"
+slots="${C1_LOCK_SLOTS:-1}"
 base="${TMPDIR:-/tmp}"
-base="${base%/}/h1-heavy-lock"
+base="${base%/}/c1-heavy-lock"
 mkdir -p "$base"
 held=""
 release() { [ -n "$held" ] && rm -rf "$held"; }

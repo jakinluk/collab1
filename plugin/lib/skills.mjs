@@ -8,7 +8,7 @@ import { scanSecrets } from './secrets.mjs';
 import { ensureDir, skillsDir } from './util.mjs';
 
 export const MAX_SKILL_BYTES = 2 * 1024 * 1024;
-export const skillFolderName = (name) => `h1--${String(name).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)}`;
+export const skillFolderName = (name) => `c1--${String(name).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)}`;
 
 /** Returns a list of problems with archive entry names (absolute paths, `..`, links outside). */
 export function unsafeEntries(entries) {
@@ -73,7 +73,7 @@ export async function syncSkills(api, cfg, { fetchImpl = globalThis.fetch, log =
       if (!res.ok) throw new Error(`download failed with HTTP ${res.status}`);
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length > MAX_SKILL_BYTES) throw new Error('archive larger than 2 MB');
-      const tmp = path.join(os.tmpdir(), `h1-skill-${process.pid}-${k.id}.tgz`);
+      const tmp = path.join(os.tmpdir(), `c1-skill-${process.pid}-${k.id}.tgz`);
       fs.writeFileSync(tmp, buf, { mode: 0o600 });
       try {
         extractSkill(tmp, k.name);
@@ -125,7 +125,7 @@ export function packSkill(dir) {
     e.code = 'invalid';
     throw e;
   }
-  const out = path.join(os.tmpdir(), `h1-share-${process.pid}-${Date.now()}.tgz`);
+  const out = path.join(os.tmpdir(), `c1-share-${process.pid}-${Date.now()}.tgz`);
   tar(['-czf', out, '-C', dir, '.']);
   const size = fs.statSync(out).size;
   if (size > MAX_SKILL_BYTES) {

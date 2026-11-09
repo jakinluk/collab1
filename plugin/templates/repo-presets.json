@@ -50,6 +50,6 @@
     "instructionsPath": "CLAUDE.md",
     "laneMap": [{ "glob": "**", "lane": "mobile" }],
     "prLabels": ["hackathon", "mobile"],
-    "notes": "Run the app on the iOS Simulator with npx expo run:ios; check shared h1-- skills for the team's working recipe first."
+    "notes": "Run the app on the iOS Simulator with npx expo run:ios; check shared c1-- skills for the team's working recipe first."
   }
 }

@@ -10,7 +10,7 @@ const WORKING = new Set(['booked', 'in_progress', 'review', 'blocked']);
 export function notify(text) {
   if (process.platform !== 'darwin') return;
   const safe = String(text).replace(/["\\]/g, "'").slice(0, 180);
-  execFile('osascript', ['-e', `display notification "${safe}" with title "HackathonOne"`], { timeout: 5000 }, () => {});
+  execFile('osascript', ['-e', `display notification "${safe}" with title "CollabOne"`], { timeout: 5000 }, () => {});
 }
 
 const sleepForever = () => new Promise(() => setInterval(() => {}, 1 << 30));
@@ -28,7 +28,7 @@ export async function watch({ print = (l) => process.stdout.write(l + '\n'), Web
   const { api } = clientFromConfig({ timeoutMs: 10000 });
   const state = loadState();
   const gate = new SeqGate(state.lastSeq ?? 0);
-  const limiter = new RateLimiter(Number(process.env.H1_MONITOR_MAX_PER_MIN) || 20);
+  const limiter = new RateLimiter(Number(process.env.C1_MONITOR_MAX_PER_MIN) || 20);
   const ctx = { seatId: cfg.seatId, projectId: cfg.projectId, lanes: cfg.lanes ?? [], myTickets: new Set() };
 
   const refreshMe = async () => {
@@ -51,8 +51,8 @@ export async function watch({ print = (l) => process.stdout.write(l + '\n'), Web
     syncing = true;
     try {
       const r = await syncSkills(api, { ...cfg, projectId: ctx.projectId });
-      for (const s of [...r.added, ...r.updated]) print(`[h1] skill ${s} synced to ~/.claude/skills`);
-      for (const s of r.removed) print(`[h1] skill ${s} retired and removed`);
+      for (const s of [...r.added, ...r.updated]) print(`[c1] skill ${s} synced to ~/.claude/skills`);
+      for (const s of r.removed) print(`[c1] skill ${s} retired and removed`);
     } catch {
       /* next skill event retries */
     } finally {
@@ -123,9 +123,9 @@ export async function watch({ print = (l) => process.stdout.write(l + '\n'), Web
     onEvent,
     onReady: () => catchUp(),
     onStatus: (s) => {
-      if (s === 'offline') print('[h1] hub connection lost; reconnecting');
+      if (s === 'offline') print('[c1] hub connection lost; reconnecting');
     },
-    log: (m) => process.stderr.write(`h1 watch: ${m}\n`),
+    log: (m) => process.stderr.write(`c1 watch: ${m}\n`),
   });
   client.start();
   const refresher = setInterval(refreshMe, 5 * 60000);

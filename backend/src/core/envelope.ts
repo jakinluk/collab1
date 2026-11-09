@@ -65,7 +65,7 @@ export const envelope = (e: {
 
 export const finalize = (input: EnvelopeInput, seq: number, ts: number): Envelope => ({ seq, ts, ...input });
 
-export const NAMESPACE = 'h1';
+export const NAMESPACE = 'c1';
 
 export const channelFor = (e: Pick<Envelope, 'to' | 'projectId'>): string => {
   if (e.to && e.to !== 'all' && e.to !== 'humans') return `/${NAMESPACE}/s/${e.to}`;

@@ -1,4 +1,4 @@
-// End-to-end run of the board (real browser) against the local hub, with a real h1 CLI seat
+// End-to-end run of the board (real browser) against the local hub, with a real c1 CLI seat
 // acting as the agent side. Usage: node board-e2e.mjs [--headed]
 // Needs Google Chrome (Playwright channel "chrome") and the backend dev dependencies.
 import { spawn, execFileSync } from 'node:child_process';
@@ -12,8 +12,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT ?? 8792);
 const BASE = `http://localhost:${PORT}`;
 const API = `${BASE}/api/v1`;
-const H1 = path.join(ROOT, 'plugin/bin/h1');
-const WORK = fs.mkdtempSync(path.join(os.tmpdir(), 'h1-board-e2e-'));
+const C1 = path.join(ROOT, 'plugin/bin/c1');
+const WORK = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-board-e2e-'));
 const SHOTS = process.env.SHOTS ?? path.join(WORK, 'screenshots');
 fs.mkdirSync(SHOTS, { recursive: true });
 
@@ -64,11 +64,11 @@ for (let i = 0; i < 100; i++) {
 
 const seatHome = (seat) => {
   const d = path.join(WORK, seat);
-  fs.mkdirSync(path.join(d, 'h1'), { recursive: true });
+  fs.mkdirSync(path.join(d, 'c1'), { recursive: true });
   fs.mkdirSync(path.join(d, 'home'), { recursive: true });
-  return { H1_HOME: path.join(d, 'h1'), HOME: path.join(d, 'home'), H1_TOKEN_FILE: '1' };
+  return { C1_HOME: path.join(d, 'c1'), HOME: path.join(d, 'home'), C1_TOKEN_FILE: '1' };
 };
-const cli = (seat, ...args) => execFileSync(H1, args, { env: { ...process.env, ...seatHome(seat) }, encoding: 'utf8', timeout: 30000 });
+const cli = (seat, ...args) => execFileSync(C1, args, { env: { ...process.env, C1_CLIENT_VERSION: '1.0.0', ...seatHome(seat) }, encoding: 'utf8', timeout: 30000 });
 const devToken = async (email) => (await (await fetch(`${BASE}/_dev/token?email=${email}`, { method: 'POST' })).json()).idToken;
 const call = async (token, method, p, body) => {
   const r = await fetch(API + p, { method, headers: { authorization: `Bearer ${token}`, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -106,7 +106,7 @@ const body = page.locator('body');
 await step('sign-in runs the PKCE code flow and lands on the seat form', async () => {
   await signIn(page, 'ania@example.com');
   await page.getByRole('heading', { name: 'Create your seat' }).waitFor();
-  const auth = await page.evaluate(() => sessionStorage.getItem('h1.auth'));
+  const auth = await page.evaluate(() => sessionStorage.getItem('c1.auth'));
   if (!auth || !JSON.parse(auth).idToken) throw new Error('no ID token in sessionStorage');
   if (new URL(page.url()).search) throw new Error(`callback query left in the URL: ${page.url()}`);
 });
@@ -230,7 +230,7 @@ await step('a join code from the board connects a Mac', async () => {
   await page.getByRole('button', { name: /Create join code|New code/ }).click();
   const code = (await page.locator('.join-code').innerText()).trim();
   if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) throw new Error(`unexpected join code ${code}`);
-  await expectText(page.locator('.cmd code'), new RegExp(`h1 join --code ${code} --api ${BASE}`));
+  await expectText(page.locator('.cmd code'), new RegExp(`c1 join --code ${code} --api ${BASE}`));
   const out = cli('ania', 'join', '--code', code, '--api', BASE);
   if (!/Joined as ania/.test(out)) throw new Error(out);
   await expectText(page.locator('table.data'), /tk_/);
@@ -256,28 +256,28 @@ await step('a project created in the board editor is live for agents', async () 
   if (!/repair-cart/.test(out)) throw new Error(out);
 });
 
-await step('the HackathonOne repo is set in Settings and a CLI bug opens the fix queue', async () => {
+await step('the CollabOne repo is set in Settings and a CLI bug opens the fix queue', async () => {
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.fill('#set-tool-repo', 'git@github.com:acme/hakatonOne.git');
+  await page.fill('#set-tool-repo', 'git@github.com:acme/collab1.git');
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expectText(page.locator('#toasts'), /Settings saved/);
   const out = cli('ania', 'bug', 'board shows no release banner', '--area', 'board');
-  if (!/Filed T\d+ in the HackathonOne fix queue/.test(out)) throw new Error(out);
+  if (!/Filed T\d+ in the CollabOne fix queue/.test(out)) throw new Error(out);
   await page.getByRole('tab', { name: 'Board' }).click();
-  await expectText(body, /HackathonOne fixes/);
+  await expectText(body, /CollabOne fixes/);
 });
 
 await step('publishing a release in Settings announces it on every open board', async () => {
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.fill('#rel-version', '0.3.1');
+  await page.fill('#rel-version', '1.0.1');
   await page.fill('#rel-notes', 'Release banner on the board');
   await page.getByRole('button', { name: 'Publish release' }).click();
-  await expectText(page.locator('#release-current'), /Latest 0\.3\.1/);
-  await expectText(cyril.locator('.release-banner'), /HackathonOne 0\.3\.1 released/);
+  await expectText(page.locator('#release-current'), /Latest 1\.0\.1/);
+  await expectText(cyril.locator('.release-banner'), /CollabOne 1\.0\.1 released/);
   await shot(page, '09-release-settings');
   await shot(cyril, '10-release-banner');
   const v = cli('ania', 'version');
-  if (!/0\.3\.1 is out|up to date/.test(v)) throw new Error(v);
+  if (!/1\.0\.1 is out/.test(v)) throw new Error(v);
 });
 
 await browser.close();

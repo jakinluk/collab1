@@ -1,7 +1,7 @@
 {
   "apiBase": "https://d1234abcd.cloudfront.net/api/v1",
   "cognito": {
-    "domain": "https://h1-hackathon.auth.us-east-1.amazoncognito.com",
+    "domain": "https://c1-hackathon.auth.us-east-1.amazoncognito.com",
     "clientId": "1example23456789abcdefghij",
     "redirectUri": "https://d1234abcd.cloudfront.net/",
     "logoutUri": "https://d1234abcd.cloudfront.net/"
@@ -9,6 +9,6 @@
   "events": {
     "httpHost": "abcdefghijklmnopqrstuvwxyz.appsync-api.us-east-1.amazonaws.com",
     "realtimeUrl": "wss://abcdefghijklmnopqrstuvwxyz.appsync-realtime-api.us-east-1.amazonaws.com/event/realtime",
-    "namespace": "h1"
+    "namespace": "c1"
   }
 }

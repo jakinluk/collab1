@@ -22,11 +22,11 @@ export interface Request {
   query: Record<string, string | undefined>;
   body: unknown;
   auth: AuthContext;
-  /** Plugin version the caller runs, from the x-h1-client-version header. */
+  /** Plugin version the caller runs, from the x-c1-client-version header. */
   clientVersion?: string;
 }
 
-export const CLIENT_VERSION_HEADER = 'x-h1-client-version';
+export const CLIENT_VERSION_HEADER = 'x-c1-client-version';
 
 type Handler = (hub: Hub, req: Request, actor: () => Actor) => Promise<unknown>;
 
@@ -48,7 +48,7 @@ const route = (method: string, path: string, handler: Handler, opts: { public?: 
 
 const num = (v: string | undefined, d: number): number => (v !== undefined && /^\d+$/.test(v) ? Number(v) : d);
 
-route('GET', '/health', async () => ({ ok: true, version: process.env.H1_VERSION ?? 'dev' }), { public: true });
+route('GET', '/health', async () => ({ ok: true, version: process.env.C1_VERSION ?? 'dev' }), { public: true });
 route('POST', '/join', (hub, r) => hub.join(r.body), { public: true, status: 201 });
 
 route('GET', '/me', (hub, _r, a) => hub.me(a()));
@@ -165,7 +165,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   const method = event.requestContext.http.method;
   const rawPath = event.rawPath.startsWith(API_PREFIX) ? event.rawPath.slice(API_PREFIX.length) || '/' : event.rawPath;
   const headers = Object.fromEntries(Object.entries(event.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
-  if (!safeEqual(headers['x-h1-origin-verify'], await originSecret())) return error(403, 'forbidden', 'use the HackathonOne URL, not the API Gateway endpoint');
+  if (!safeEqual(headers['x-c1-origin-verify'], await originSecret())) return error(403, 'forbidden', 'use the CollabOne URL, not the API Gateway endpoint');
   let body: unknown;
   try {
     body = method === 'GET' || method === 'DELETE' ? {} : parseBody(event);

@@ -1,18 +1,20 @@
-# HackathonOne: the hackathon as a Claude Code plugin
+# CollabOne: people and Claude Code agents working on shared projects
 
-Status: design spec, first written 2026-11-04 and revised 2026-11-09 (local end-to-end runs, sweep on EventBridge Scheduler, fix queue and plugin releases in §8.5).
+**First mode: the hackathon.** CollabOne's first use case is a time-boxed team hackathon, and this spec describes that **event mode**: an end date after which data and tokens expire, project phases (plan, build, freeze, demo), and a teardown at the end. An **ongoing mode** for everyday team work (no end date, a chosen retention period, token rotation, no teardown) is planned as a later step; nothing here depends on the event being a hackathon except those event-mode rules.
+
+Status: design spec, first written 2026-11-04 and revised 2026-11-09 (renamed from HackathonOne to CollabOne with the hackathon as its first mode; local end-to-end runs; sweep on EventBridge Scheduler; fix queue and plugin releases in §8.5).
 - **Current design:** cloud-only serverless hub (D14), multi-project (§4.1), decisions D1–D14 recorded in §0.1. D2 is still open.
 - **Facts checked:** Claude Code facts against the official docs on 2026-11-04. AWS facts on 2026-11-05.
 - **Re-check before the offsite:** channels and plugin monitors are research preview / experimental, so check them again in the week before.
 - **Basis:** this design grew out of a simpler coordinator, "hackboard", and reuses its ticket model, ownership guard, test lock and compliance rules P1–P7 (`docs/SECURITY.md`).
 - There are deliberately **no time or effort estimates** here.
-- **Implementation contract** (API routes, channels, table keys, CLI commands): `docs/CONTRACT.md` in the `hakatonOne` repo.
+- **Implementation contract** (API routes, channels, table keys, CLI commands): `docs/CONTRACT.md` in the `collab1` repo.
 
 ---
 
 ## 0. TL;DR
 
-- **HackathonOne** (`h1` plugin, display name "HackathonOne") turns the hackathon into Claude Code skills, backed by a small **serverless hub** in a sandbox AWS account:
+- **CollabOne** (`c1` plugin) turns team work with Claude Code into shared skills, backed by a small **serverless hub** in a sandbox AWS account. In its first mode it runs a hackathon. The hub uses:
   - API Gateway HTTP API + Lambda;
   - a DynamoDB single table;
   - AppSync Events for push;
@@ -20,10 +22,10 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (local end-
   - S3 + CloudFront + WAF for the board.
 
   There is no laptop host and no local storage. Everyone only needs internet, which Claude Code needs anyway.
-- **Each participant's Claude Code** gets a bundled `h1` CLI for **pull** (book tickets, raise blockers, vote, share skills). A plugin **monitor** (`h1 watch`) gives **push**: it subscribes to AppSync Events and prints one-line events, which reach Claude as notifications.
+- **Each participant's Claude Code** gets a bundled `c1` CLI for **pull** (book tickets, raise blockers, vote, share skills). A plugin **monitor** (`c1 watch`) gives **push**: it subscribes to AppSync Events and prints one-line events, which reach Claude as notifications.
 - **The board** is a web app on CloudFront. It shows all projects, the goal and definition of done, kanban columns, the Blocked lane, "Needs a human", votes, people and usage, shared knowledge, the event log, and an editable rules table. It has dark, light and projector modes.
 - **Everything is an ordered event log** in DynamoDB. Clients catch up from their last sequence number, so missed pushes don't matter.
-- **Autonomy by default.** Humans create projects, set goals, approve generated plans, add tickets, and answer only what the **blocker rules table** routes to them. `/h1:autopilot` loops: book, build, verify, PR, cross-review, next.
+- **Autonomy by default.** Humans create projects, set goals, approve generated plans, add tickets, and answer only what the **blocker rules table** routes to them. `/c1:autopilot` loops: book, build, verify, PR, cross-review, next.
 - **Two credentials per seat.** An **agent token** (CLI, Claude, factory workers) can only *propose* human actions. A **human session** (Cognito login with MFA, in the board) approves them. Claude can't act as a human.
 - **Open floor (D10):** everyone sees every project's blockers and votes, and any human can resolve a human-routed item. Others can contest it within a short window, which turns it into a human vote.
 - **Several projects (D13)**, each with its own goal, repos, integration branch, tickets, votes and rule overrides. People are pinned to one project for booking only.
@@ -43,7 +45,7 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (local end-
 | D9 | Low usage | **No cap.** Everyone is on a high-usage plan. Usage bars are for visibility only | §9.2, §15 |
 | D10 | Final say on scope | **Open floor:** everyone sees all blockers across all projects, and any human can decide | §5, §7, §10 |
 | D11 | Build before the offsite | **The full version, built as a warm-up mini-hackathon** | §14 |
-| D12 | Command names | **Short: `/h1:…`** | §8 |
+| D12 | Command names | **Short: `/c1:…`** | §8 |
 | D13 | Projects | **Several projects on one hub; each person pinned to one project.** Pinning limits what autopilot books, not what anyone can see or decide | §4.1 |
 | D14 | Hosting | **Cloud only, serverless:** Lambda + DynamoDB + AppSync Events + Cognito + CloudFront/WAF in the AWS sandbox account. No local storage. "It must be as safe" as the LAN design: see §2.3 | §2 |
 
@@ -51,10 +53,10 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (local end-
 
 ## 1. What changes compared with hackboard (the simpler coordinator)
 
-| | Hackboard | HackathonOne |
+| | Hackboard | CollabOne |
 |---|---|---|
 | Coordinator | Lambda + DynamoDB, or Node + SQLite on a laptop | Serverless hub in the AWS sandbox (D14) |
-| How work reaches sessions | Pull only (`curl`, HTTP hooks) | Pull through the `h1` CLI, **push** through a plugin monitor on AppSync Events |
+| How work reaches sessions | Pull only (`curl`, HTTP hooks) | Pull through the `c1` CLI, **push** through a plugin monitor on AppSync Events |
 | Messaging | Slack webhook | Event log relayed into every live session, plus macOS notifications for humans |
 | Knowledge sharing | — | Tips, playbooks and **temporary skills** that sync into everyone's Claude Code live |
 | Blockers | `/hack:blocked` → integrator | Typed escalations matched against an **editable blocker rules table** |
@@ -68,7 +70,7 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (local end-
 ## 2. Architecture
 
 ```
-┌──────────────────── AWS sandbox account · CDK stack "h1" ─────────────────────┐
+┌──────────────────── AWS sandbox account · CDK stack "c1" ─────────────────────┐
 │  CloudFront + WAF ─┬─ /            → S3 board (static SPA, OAC)               │
 │                    └─ /api/v1/*    → API Gateway HTTP API (origin-verify hdr) │
 │                                         │  Lambda authorizer: agent token |   │
@@ -77,20 +79,20 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (local end-
 │                                   Lambda "api" (all routes, zod-validated)    │
 │                                         │ TransactWriteItems                  │
 │                                         ▼                                     │
-│                   DynamoDB "h1" (state + ordered event log, Streams, TTL)     │
+│                   DynamoDB "c1" (state + ordered event log, Streams, TTL)     │
 │                                         │ stream (PK = EVENT)                 │
 │                                         ▼                                     │
-│                   Lambda "fanout" ── SigV4 publish ──► AppSync Events "h1"     │
+│                   Lambda "fanout" ── SigV4 publish ──► AppSync Events "c1"     │
 │  Scheduler (1 min) → Lambda "sweep": leases, deadlines, contest windows       │
 │  Cognito user pool (invite-only, MFA) · Secrets Manager · S3 skills bucket    │
 └───────────────────────────────────────────────────────────────────────────────┘
-        ▲ HTTPS: commands                         ▲ WSS: subscribe /h1/...
+        ▲ HTTPS: commands                         ▲ WSS: subscribe /c1/...
 ┌─────────── each participant's MacBook (own Claude login) ─────────────────────┐
-│ Claude Code session(s) + plugin h1                                            │
-│   skills /h1:*  → `h1` CLI (plugin bin/)  → HTTPS API with the agent token    │
-│   monitor `h1 watch` → AppSync Events subscription → notifications to Claude  │
+│ Claude Code session(s) + plugin c1                                            │
+│   skills /c1:*  → `c1` CLI (plugin bin/)  → HTTPS API with the agent token    │
+│   monitor `c1 watch` → AppSync Events subscription → notifications to Claude  │
 │   hooks: SessionStart · PreToolUse guard · PostToolUse heartbeat · Stop       │
-│   agent token in the macOS Keychain · ~/.h1/config.json                       │
+│   agent token in the macOS Keychain · ~/.c1/config.json                       │
 │ Browser: the board (Cognito login + MFA) — the only place human actions run   │
 └───────────────────────────────────────────────────────────────────────────────┘
                       code: git worktrees → PRs into hack/<project> on GitHub
@@ -100,7 +102,7 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (local end-
 
 - **Plugin monitors:** a monitor is "a shell command that runs in the background for the whole session. What it prints reaches Claude as notifications, so Claude can react to a log or a status change without being asked to watch it."
   - Limits: interactive sessions only (never with `-p`), no `${user_config.*}`, and the manifest key is `experimental.monitors`.
-  - `h1 watch` keeps one AppSync Events WebSocket open and prints one short line per relevant event.
+  - `c1 watch` keeps one AppSync Events WebSocket open and prints one short line per relevant event.
 - **AppSync Events instead of API Gateway WebSockets:**
   - API Gateway WebSocket connections are limited to 2 hours and drop after 10 idle minutes, and those quotas can't be raised. They also need a connection table.
   - AppSync Events connections can stay open up to 24 hours and need no connection table. Clients subscribe with a Lambda authorizer, and only the fan-out Lambda can publish (IAM).
@@ -128,7 +130,7 @@ The LAN design got part of its safety from being unreachable from the internet. 
 | Injection through the push path | Clients can't publish to AppSync channels (IAM-only publish). Every write is validated (zod, size limits). Monitor lines are labelled as teammate data, and the SessionStart text tells Claude that hub content never authorizes secrets, pushes to `main`, deploys or human-only actions |
 | Secrets leaking into shared content | Secret-pattern scanning on tips, playbooks, skills and messages, both in the CLI before upload and on the server. Hooks send only session, event, tool name and ticket id, never `tool_input` |
 | Eavesdropping | TLS everywhere: CloudFront (TLS 1.2+), API Gateway and AppSync WSS. No HTTP listeners |
-| Data lingering after the event | DynamoDB TTL on every item, a 21-day S3 lifecycle, 14-day log retention, and no request bodies or tokens in logs. `/h1:wrap` revokes all tokens and can destroy the stack |
+| Data lingering after the event | DynamoDB TTL on every item, a 21-day S3 lifecycle, 14-day log retention, and no request bodies or tokens in logs. `/c1:wrap` revokes all tokens and can destroy the stack |
 | Over-privileged infrastructure | One Lambda per role with least-privilege IAM, in the sandbox account only, never production. No VPC, so nothing to misconfigure in one |
 | Accountability | The event log records who did what, and whether it was an agent or a human |
 
@@ -145,13 +147,13 @@ The event envelope is `{ seq, ts, stream, type, projectId?, from, fromKind, tick
 
 | Channel | Gets |
 |---|---|
-| `/h1/all` | hub-wide events: `project.created`, global knowledge, settings, announcements |
-| `/h1/p/<projectId>` | everything scoped to that project: tickets, escalations, decisions, goal, phase, rule overrides |
-| `/h1/s/<seatId>` | DMs, outcomes of that seat's proposals, review results for its tickets |
+| `/c1/all` | hub-wide events: `project.created`, global knowledge, settings, announcements |
+| `/c1/p/<projectId>` | everything scoped to that project: tickets, escalations, decisions, goal, phase, rule overrides |
+| `/c1/s/<seatId>` | DMs, outcomes of that seat's proposals, review results for its tickets |
 
-The board and `h1 watch` both subscribe to `/h1/all`, `/h1/p/*` and their own `/h1/s/<seatId>`. The monitor then keeps only what concerns its pinned project and seat, so re-pinning needs no resubscribe.
+The board and `c1 watch` both subscribe to `/c1/all`, `/c1/p/*` and their own `/c1/s/<seatId>`. The monitor then keeps only what concerns its pinned project and seat, so re-pinning needs no resubscribe.
 
-| Stream | Typical events | What `h1 watch` prints |
+| Stream | Typical events | What `c1 watch` prints |
 |---|---|---|
 | `tasks` | `ticket.added/ready/booked/status/pr/review_needed/done/released` | newly ready tickets in my lanes and project; changes to my tickets and their dependencies |
 | `knowledge` | `tip.shared`, `playbook.shared`, `skill.published/updated/retired` | one-line notice; skills auto-sync |
@@ -164,10 +166,10 @@ The board and `h1 watch` both subscribe to `/h1/all`, `/h1/p/*` and their own `/
 Example monitor output:
 
 ```
-[h1] T12 ready (mobile) "Offline cache for jobs list" — you're idle → /h1:ticket next
-[h1] VOTE D7 needed by 14:14 "Add syncState to NoteDraft?" (agent quorum) → /h1:decide D7
-[h1] SKILL h1-run-ios-sim v2 published by Ania → synced; use it before figuring builds out yourself
-[h1] RULES v4: B3 max_attempts 3→2
+[c1] T12 ready (mobile) "Offline cache for jobs list" — you're idle → /c1:ticket next
+[c1] VOTE D7 needed by 14:14 "Add syncState to NoteDraft?" (agent quorum) → /c1:decide D7
+[c1] SKILL c1-run-ios-sim v2 published by Ania → synced; use it before figuring builds out yourself
+[c1] RULES v4: B3 max_attempts 3→2
 ```
 
 Items that need a human also raise a macOS notification.
@@ -196,7 +198,7 @@ Domain types, extending hackboard's: Project, Goal (versioned per project), Tick
 | Concern | Rule |
 |---|---|
 | Scoping | Every ticket, escalation and decision carries a `projectId`. Readiness, dependencies and path locks are per project and repo. Cross-project dependencies are allowed but shown in red |
-| Membership | `/h1:join` picks the project; `h1 me pin <pid>` moves a seat (its bookings in the old project are released first). By default a seat is pinned: autopilot only books from its project |
+| Membership | `/c1:join` picks the project; `c1 me pin <pid>` moves a seat (its bookings in the old project are released first). By default a seat is pinned: autopilot only books from its project |
 | Goal and decisions | One goal per project. No goal owner (D10): any human can resolve human-routed items in any project |
 | Visibility | Pinning affects only booking. Everyone sees every project's board, blockers and decisions |
 | Votes | Electorates resolve within the project. A decision without a project is hub-wide |
@@ -205,16 +207,16 @@ Domain types, extending hackboard's: Project, Goal (versioned per project), Tick
 | Code | Each repo of a project has an integration branch `hack/<project>`, cut from its base branch. Ticket branches are `hack/<project>/<ticket>-<slug>` |
 | Repo metadata (v0.2) | Per repo: base and integration branch, **hot paths** (only contract or glue tickets may touch them) and **contract paths**, setup and verify commands, instructions file, folder → lane map, PR labels and notes for agents. Presets: `nx-monorepo`, `node-app`, `expo-app`. The hub rejects plans whose build tickets own hot or contract paths. The guard hook protects exactly the ticket repo's paths |
 | Project metadata (v0.2) | Description, demo (URL, stage, notes), links (Slack channel, designs, PRD) and tags, shown on the board |
-| Local checkouts | Each Mac maps repo names to folders in `~/.h1/repos.json` (`h1 repo link`), never sent to the hub. The CLI can also match a checkout by its git remote |
+| Local checkouts | Each Mac maps repo names to folders in `~/.c1/repos.json` (`c1 repo link`), never sent to the hub. The CLI can also match a checkout by its git remote |
 | Board | **All projects** strip at the top; each project opens its own columns |
-| Commands | `/h1:project` creates and manages projects. `/h1:goal`, `/h1:plan` and `/h1:ticket add` are always scoped to one project: the pinned one by default, or `--project` |
+| Commands | `/c1:project` creates and manages projects. `/c1:goal`, `/c1:plan` and `/c1:ticket add` are always scoped to one project: the pinned one by default, or `--project` |
 
 ---
 
 ## 5. Blocker rules table (editable live)
 
 The table is the contract for when an agent may stop and ask.
-- It lives on the hub, versioned, and is edited on the board's Rules tab (a human action) or proposed with `/h1:rules`.
+- It lives on the hub, versioned, and is edited on the board's Rules tab (a human action) or proposed with `/c1:rules`.
 - Each edit emits `rules.updated`. Sessions get the digest at SessionStart and on each update.
 - An agent that hits a problem **must** classify it against this table. If no row matches, it decides itself and logs the decision.
 
@@ -241,14 +243,14 @@ The table is the contract for when an agent may stop and ask.
 
 ## 6. Knowledge and temporary skill sharing
 
-1. **Tip:** one or two lines, pushed to everyone and searchable with `h1 kb search`.
+1. **Tip:** one or two lines, pushed to everyone and searchable with `c1 kb search`.
 2. **Playbook:** a markdown procedure, fetched on demand.
 3. **Shared skill:**
    - Uploaded as a `.tar.gz` (≤ 2 MB) through a pre-signed S3 URL and announced as `skill.published`.
-   - Every `h1 watch` downloads it into `~/.claude/skills/h1--<name>/`, where Claude Code picks it up live.
-   - Archives with absolute paths or `..` are rejected. Retiring a skill deletes it everywhere, and `/h1:wrap` removes all `h1--*` skills.
+   - Every `c1 watch` downloads it into `~/.claude/skills/c1--<name>/`, where Claude Code picks it up live.
+   - Archives with absolute paths or `..` are rejected. Retiring a skill deletes it everywhere, and `/c1:wrap` removes all `c1--*` skills.
 
-**Mobile-app example.** The first agent that gets "build the app, boot the iOS Simulator, run the e2e flow" working writes `h1-run-ios-sim` and publishes it. From then on every agent uses it, so runs stay consistent across machines.
+**Mobile-app example.** The first agent that gets "build the app, boot the iOS Simulator, run the e2e flow" working writes `c1-run-ios-sim` and publishes it. From then on every agent uses it, so runs stay consistent across machines.
 
 **Sharing rules:**
 - Resolving a B3 requires a tip or skill before the escalation can close.
@@ -259,7 +261,7 @@ The table is the contract for when an agent may stop and ask.
 
 ## 7. Quorum decisions and the open floor
 
-- **Seats:** one per participant. The seat's agent casts a provisional vote with a reason. Its human can override it on the board or with `/h1:decide` until the deadline.
+- **Seats:** one per participant. The seat's agent casts a provisional vote with a reason. Its human can override it on the board or with `/c1:decide` until the deadline.
 - **Electorate** comes from the rule row. `affected_seats` means the owners of dependent or blocked tickets.
 - **Outcome:** quorum is reached under the rule (majority / two-thirds / unanimous / consent), or the deadline passes and the default applies (`decision.defaulted`). Parked tickets unblock automatically.
 - **Open floor (D10):**
@@ -277,30 +279,30 @@ The table is the contract for when an agent may stop and ask.
 
 | Skill | Who | What it does |
 |---|---|---|
-| `/h1:network` | Everyone, first | Connectivity procedure and `h1 doctor` checks (§11) |
-| `/h1:init` | Organizer, once | Deploys the CDK stack (or checks it), invites participants, opens the board, creates the first project |
-| `/h1:join` | Every participant | Log into the board (MFA), create a join code in Tokens & Macs, then `h1 join --code`. Pick project, lanes and work mode; install the event permission settings (with consent); start the monitor |
-| `/h1:project` | Human (proposal) | `new` (name, repos, lanes; creates the `hack/<project>` branches with git/gh, then proposes `project.create`), `list`, `edit`, `pin`, `freeze`/`archive` |
-| `/h1:goal` | Human (proposal) | Drafts the project's goal, definition of done, demo script and non-goals with the human, then proposes `goal.set`. Changing an existing goal is a B5 with a contest window |
-| `/h1:plan` | Human approves | Breaks the goal into tickets (contracts first, disjoint `pathsOwned`, runnable acceptance commands, waves) and proposes `plan.load` |
-| `/h1:ticket` | Anyone | `add`, `next`, `book`, `start`, `review-ready`, `block`, `release`, `show`, `list` |
-| `/h1:work <id>` | Agent | One ticket end to end in a worktree on `hack/<project>/<id>-<slug>`: contracts are read-only, WIP is pushed, acceptance commands run through `test-lock.sh`, then rebase, PR and status |
-| `/h1:review <id>` | Agent, never the author seat | Reviews the PR against acceptance and the repo's rules, then squash-merges into `hack/<project>` or requests changes |
-| `/h1:autopilot` | Each participant | The loop in §9.2 |
-| `/h1:raise` | Agent or human | Classify against the rules, attach context and options, raise it |
-| `/h1:decide` | Agent or human | List, vote, override |
-| `/h1:share` | Agent or human | Tip, playbook or skill (§6) |
-| `/h1:board` | Anyone | Compact terminal board + board URL |
-| `/h1:rules` | Human (proposal) | Show, or propose rule changes |
-| `/h1:wrap` | Organizer | Freeze, demo checklist, export the event log, harvest follow-ups, retire `h1--*` skills, revoke tokens, optionally destroy the stack |
-| `/h1:bug` | Agent or human | Report a problem with HackathonOne itself into the fix queue (§8.5) |
-| `/h1:update` | Human | Update the plugin to the announced release through Claude Code's plugin manager (§8.5) |
+| `/c1:network` | Everyone, first | Connectivity procedure and `c1 doctor` checks (§11) |
+| `/c1:init` | Organizer, once | Deploys the CDK stack (or checks it), invites participants, opens the board, creates the first project |
+| `/c1:join` | Every participant | Log into the board (MFA), create a join code in Tokens & Macs, then `c1 join --code`. Pick project, lanes and work mode; install the event permission settings (with consent); start the monitor |
+| `/c1:project` | Human (proposal) | `new` (name, repos, lanes; creates the `hack/<project>` branches with git/gh, then proposes `project.create`), `list`, `edit`, `pin`, `freeze`/`archive` |
+| `/c1:goal` | Human (proposal) | Drafts the project's goal, definition of done, demo script and non-goals with the human, then proposes `goal.set`. Changing an existing goal is a B5 with a contest window |
+| `/c1:plan` | Human approves | Breaks the goal into tickets (contracts first, disjoint `pathsOwned`, runnable acceptance commands, waves) and proposes `plan.load` |
+| `/c1:ticket` | Anyone | `add`, `next`, `book`, `start`, `review-ready`, `block`, `release`, `show`, `list` |
+| `/c1:work <id>` | Agent | One ticket end to end in a worktree on `hack/<project>/<id>-<slug>`: contracts are read-only, WIP is pushed, acceptance commands run through `test-lock.sh`, then rebase, PR and status |
+| `/c1:review <id>` | Agent, never the author seat | Reviews the PR against acceptance and the repo's rules, then squash-merges into `hack/<project>` or requests changes |
+| `/c1:autopilot` | Each participant | The loop in §9.2 |
+| `/c1:raise` | Agent or human | Classify against the rules, attach context and options, raise it |
+| `/c1:decide` | Agent or human | List, vote, override |
+| `/c1:share` | Agent or human | Tip, playbook or skill (§6) |
+| `/c1:board` | Anyone | Compact terminal board + board URL |
+| `/c1:rules` | Human (proposal) | Show, or propose rule changes |
+| `/c1:wrap` | Organizer | Freeze, demo checklist, export the event log, harvest follow-ups, retire `c1--*` skills, revoke tokens, optionally destroy the stack |
+| `/c1:bug` | Agent or human | Report a problem with CollabOne itself into the fix queue (§8.5) |
+| `/c1:update` | Human | Update the plugin to the announced release through Claude Code's plugin manager (§8.5) |
 
 - Setup skills that change shared state (`init`, `project`, `goal`, `plan`, `rules`, `wrap`) use `disable-model-invocation: true`.
 - Their hub writes go through **proposals** that a human approves in the board.
-- `allowed-tools: Bash(h1 *)` pre-approves the CLI.
+- `allowed-tools: Bash(c1 *)` pre-approves the CLI.
 
-### 8.2 `h1` CLI
+### 8.2 `c1` CLI
 
 - A zero-dependency Node ≥ 22 script in the plugin's `bin/`, on the Bash tool's `PATH` while the plugin is enabled.
 - Talks to `https://<board-domain>/api/v1` with the agent token from the Keychain, and to AppSync Events over WSS.
@@ -309,36 +311,36 @@ The table is the contract for when an agent may stop and ask.
 ### 8.3 Hooks and monitor
 
 ```
-SessionStart  → h1 hook session-start   identity, project, goal, my tickets, rules digest, trust note; syncs skills (reloadSkills)
-PreToolUse    → h1 hook guard           Edit|Write|NotebookEdit: pathsOwned / other tickets / hot paths
-PostToolUse   → h1 hook heartbeat       lease + presence, throttled; never blocks
-Notification  → h1 hook needs-input     board shows "needs input"; macOS notification
-Stop          → h1 hook autopilot-stop  §9.2
-SessionEnd    → h1 hook session-end     releases this session's bookings unless in review
-monitor       → h1 watch                AppSync Events subscription → one-line events (experimental.monitors)
+SessionStart  → c1 hook session-start   identity, project, goal, my tickets, rules digest, trust note; syncs skills (reloadSkills)
+PreToolUse    → c1 hook guard           Edit|Write|NotebookEdit: pathsOwned / other tickets / hot paths
+PostToolUse   → c1 hook heartbeat       lease + presence, throttled; never blocks
+Notification  → c1 hook needs-input     board shows "needs input"; macOS notification
+Stop          → c1 hook autopilot-stop  §9.2
+SessionEnd    → c1 hook session-end     releases this session's bookings unless in review
+monitor       → c1 watch                AppSync Events subscription → one-line events (experimental.monitors)
 ```
 
-The monitor sleeps quietly until `~/.h1/config.json` exists, so the plugin is harmless in other projects. Enable it at project scope in the hackathon repos.
+The monitor sleeps quietly until `~/.c1/config.json` exists, so the plugin is harmless in other projects. Enable it at project scope in the hackathon repos.
 
 ### 8.4 v1.5: two-way channel
 
 Expose the hub as a Claude Code channel (`claude/channel` + `claude/channel/permission` + a reply tool). Teammates could then message an agent directly, and permission prompts would relay to the board.
 
 Until the channel is allowlisted:
-- every session starts with `--dangerously-load-development-channels plugin:h1@hackathonone`;
+- every session starts with `--dangerously-load-development-channels plugin:c1@collabone`;
 - on a claude.ai Team or Enterprise org, an admin must turn channels on.
 
 Ship v1 without it (D2 open).
 
-### 8.5 Fixing HackathonOne during the event
+### 8.5 Fixing CollabOne during the event
 
 The tool will have bugs on the day, so fixing it uses the same machinery as the product work.
 
-- **Fix queue.** `/h1:bug "…"` (from any session, agent or human) files a ticket in a built-in project, `hackathonone` ("HackathonOne fixes"). The hub creates it on first use, pointing at the HackathonOne repo (`toolRepoUrl`, set at deploy or in the board's Settings). Each report names an area (`plugin`, `board`, `backend`, `docs`) that decides which repo paths the ticket owns and which tests prove the fix; `--urgent` puts it first. One or two people pin to `hackathonone` and their agents fix the tool through the normal ticket → review → merge flow.
+- **Fix queue.** `/c1:bug "…"` (from any session, agent or human) files a ticket in a built-in project, `collabone` ("CollabOne fixes"). The hub creates it on first use, pointing at the CollabOne repo (`toolRepoUrl`, set at deploy or in the board's Settings). Each report names an area (`plugin`, `board`, `backend`, `docs`) that decides which repo paths the ticket owns and which tests prove the fix; `--urgent` puts it first. One or two people pin to `collabone` and their agents fix the tool through the normal ticket → review → merge flow.
 - **Backend and board fixes** reach everyone with one deploy. Open boards show a "reload" banner when a release is announced.
-- **Plugin fixes** live on every Mac, so they ship as a **release**: bump `version` in `plugin/.claude-plugin/plugin.json` (Claude Code only updates a plugin whose version changed), merge, then publish the release in the board (Settings → HackathonOne releases) or propose it with `h1 release propose`. The hub announces it with `tool.released`: every monitor prints `[h1] UPDATE …`, and new sessions say so at start. People run `/h1:update`, which calls `claude plugin marketplace update` and `claude plugin update`, then `/reload-plugins`. Auto-update for the marketplace is off by default; `/h1:join` asks people to turn it on.
+- **Plugin fixes** live on every Mac, so they ship as a **release**: bump `version` in `plugin/.claude-plugin/plugin.json` (Claude Code only updates a plugin whose version changed), merge, then publish the release in the board (Settings → CollabOne releases) or propose it with `c1 release propose`. The hub announces it with `tool.released`: every monitor prints `[c1] UPDATE …`, and new sessions say so at start. People run `/c1:update`, which calls `claude plugin marketplace update` and `claude plugin update`, then `/reload-plugins`. Auto-update for the marketplace is off by default; `/c1:join` asks people to turn it on.
 - **Breaking changes** set a minimum version on the release. Below it, an agent's hub calls that change anything fail with 426 `update_required`; reads still work and humans are unaffected.
-- **Safety:** the hub only announces versions. Code always comes from the HackathonOne git repository through Claude Code's own plugin manager, so the hub still can't run anything on a participant's Mac.
+- **Safety:** the hub only announces versions. Code always comes from the CollabOne git repository through Claude Code's own plugin manager, so the hub still can't run anything on a participant's Mac.
 
 ---
 
@@ -346,22 +348,22 @@ The tool will have bugs on the day, so fixing it uses the same machinery as the 
 
 ### 9.1 Human touchpoints
 
-1. `/h1:network`, then log into the board and `/h1:join`, once per machine.
-2. `/h1:project new` and `/h1:goal` per project, approved in the board.
-3. Approve the `/h1:plan` graph; add tickets whenever.
+1. `/c1:network`, then log into the board and `/c1:join`, once per machine.
+2. `/c1:project new` and `/c1:goal` per project, approved in the board.
+3. Approve the `/c1:plan` graph; add tickets whenever.
 4. Answer what the rules route to humans (B4–B7, contests, human votes).
 5. Phase calls (`freeze`, `demo`) and the demo itself.
 
-### 9.2 `/h1:autopilot` loop
+### 9.2 `/c1:autopilot` loop
 
 ```
 loop:
   if phase is freeze: only fix/test/review tickets
   pick: reviews I didn't author > ready tickets in my lanes and pinned project > any ready ticket in my project > open help requests
-  book (h1 ticket next) → /h1:work or /h1:review
+  book (c1 ticket next) → /c1:work or /c1:review
   on a problem: classify against the rules (§5)
       no matching row → decide, log, continue
-      matching row    → /h1:raise; if stopScope=ticket, park it and pick other work
+      matching row    → /c1:raise; if stopScope=ticket, park it and pick other work
   on done: share what was learned (§6), continue
   nothing to pick → stop and wait (the monitor wakes the session)
 ```
@@ -374,14 +376,14 @@ loop:
 ### 9.3 Permissions, limits and work modes
 
 - **Auto mode** goes in `~/.claude/settings.json` (it doesn't take effect in project settings), plus event rules: ask before `git push * main`, deny `git push --force*`, deny deploys to shared or production stages. Not `bypassPermissions`.
-- **End conditions:** the definition of done holds on the integration branch, the phase is `demo`, or `/h1:autopilot off`. No overnight loops (P7).
+- **End conditions:** the definition of done holds on the integration branch, the phase is `demo`, or `/c1:autopilot off`. No overnight loops (P7).
 - **Work modes (D8):**
 
   | Mode | What happens | Booking |
   |---|---|---|
   | `solo` | One autopilot session, one ticket at a time | One lease |
   | `subagents` | One session delegates parts of its ticket | One lease; sub-agents stay inside `pathsOwned` |
-  | `multi_session` | Several sessions, one ticket each | One lease per session; `h1 ticket next --n 3` |
+  | `multi_session` | Several sessions, one ticket each | One lease per session; `c1 ticket next --n 3` |
   | `factory` | The participant's own orchestration pulls tickets through the CLI or API | One worker token and lease per worker |
 
 - **Bring your own factory:** workers use their owner's child tokens, keep their leases alive, respect `pathsOwned` and the rules, and open PRs like any session. The factory runs the official `claude` binary under its owner's login (P1, P6).
@@ -391,7 +393,7 @@ loop:
 
 ## 10. The board
 
-Static app on CloudFront with Cognito login and MFA. Design: the "HackathonOne board" canvas.
+Static app on CloudFront with Cognito login and MFA. Design: the "CollabOne board" canvas.
 - **Top bar:** project switcher, phase, live connection with the current sequence number, clock, theme toggle, projector mode.
 - **All projects strip:** progress, blockers, votes and members per project, plus "New project".
 - **Goal header:** statement, definition-of-done checklist ticked from finished tickets, contest status.
@@ -407,10 +409,10 @@ Static app on CloudFront with Cognito login and MFA. Design: the "HackathonOne b
 
 ---
 
-## 11. Connectivity (`/h1:network`)
+## 11. Connectivity (`/c1:network`)
 
 1. Everyone joins any network with internet: venue Wi-Fi is fine. Laptops don't need to reach each other, so client isolation no longer matters.
-2. `h1 doctor` checks DNS, HTTPS to the API, a WSS connection to AppSync Events, and reachability of GitHub and the Anthropic API.
+2. `c1 doctor` checks DNS, HTTPS to the API, a WSS connection to AppSync Events, and reachability of GitHub and the Anthropic API.
 3. **Common failures:**
    - A captive portal: log in through the browser first.
    - A network that blocks WebSockets or long connections: switch to an **iPhone Personal Hotspot**.
@@ -432,7 +434,7 @@ Static app on CloudFront with Cognito login and MFA. Design: the "HackathonOne b
 | Bad shared skill | Agents report failures | Retire it (removed everywhere); re-publish the previous version |
 | Rules change mid-ticket | `rules.updated` | Applies to the next classification; open escalations keep their rule version |
 | Integration branch red | Rule U1 | Fix ticket at P0; revert first, fix second |
-| A bug in HackathonOne itself | Someone runs `/h1:bug` | Ticket in the `hackathonone` fix queue; backend/board fixes deploy, plugin fixes ship as a release (§8.5) |
+| A bug in CollabOne itself | Someone runs `/c1:bug` | Ticket in the `collabone` fix queue; backend/board fixes deploy, plugin fixes ship as a release (§8.5) |
 | AWS region problem | Everything fails | Fall back to GitHub Issues as the ticket list; the exported event log keeps the plan |
 
 ---
@@ -440,15 +442,15 @@ Static app on CloudFront with Cognito login and MFA. Design: the "HackathonOne b
 ## 13. Repository layout and distribution
 
 ```
-hakatonOne/
-  .claude-plugin/marketplace.json   marketplace "hackathonone" → ./plugin
-  plugin/                           the Claude Code plugin "h1" (skills, hooks, monitor, bin/h1, templates, scripts)
+collab1/
+  .claude-plugin/marketplace.json   marketplace "collabone" → ./plugin
+  plugin/                           the Claude Code plugin "c1" (skills, hooks, monitor, bin/c1, templates, scripts)
   backend/                          CDK app + Lambdas (TypeScript), core domain logic with tests
   board/                            the board web app (static, demo mode)
   docs/                             SPEC.md (this doc), CONTRACT.md, SECURITY.md, DEPLOY.md
 ```
 
-- Install with `/plugin marketplace add jakinluk/collab1` (or a local path), then `/plugin install h1@hackathonone`, at project scope in the hackathon repos.
+- Install with `/plugin marketplace add jakinluk/collab1` (or a local path), then `/plugin install c1@collabone`, at project scope in the hackathon repos.
 - `claude plugin validate ./plugin --strict` runs in CI.
 - Updates reach Macs only when `version` in `plugin.json` changes (§8.5). Background auto-update is off for team marketplaces until each person (or an admin, through managed settings) turns it on.
 - Installing through claude.ai organization settings instead of a git marketplace would need the CLI moved out of the top-level `bin/` folder, which that route rejects.
@@ -457,13 +459,13 @@ hakatonOne/
 
 ## 14. Before the offsite (no estimates)
 
-1. Build the plugin, backend and board. Building HackathonOne **with HackathonOne** is the warm-up. Run the local end-to-end suites first (`e2e/README.md`): they drive the real CLI, hooks, monitor and board against a local hub.
+1. Build the plugin, backend and board. Building CollabOne **with CollabOne** is the warm-up. Run the local end-to-end suites first (`e2e/README.md`): they drive the real CLI, hooks, monitor and board against a local hub.
 2. Deploy the stack to the sandbox (`docs/DEPLOY.md`), invite everyone, check that MFA enrolment works for each person.
 3. Default rules, goal and demo-script templates, ticket templates for the mobile app.
 4. Seed shared skills: monorepo test commands (`type:check`, ts-jest; never build), worktree setup, the `node_modules` strategy.
 5. **Dry run on the real MacBooks:**
    - venue-like Wi-Fi and the hotspot;
-   - `h1 doctor`;
+   - `c1 doctor`;
    - each work mode, including one factory worker;
    - the monitor in foreground and `--bg` sessions, and whether it wakes an idle session;
    - skill hot-sync;
@@ -478,6 +480,7 @@ hakatonOne/
 
 ## 15. Open questions and risks
 
+- **Ongoing mode (after the hackathon):** no end date; a retention period instead of TTL from the event end; agent-token rotation instead of expiry; no `/c1:wrap` teardown; phases optional per project; and a review of the security posture for long-lived data and everyday repos.
 - **Monitors are experimental.** Fallbacks are Stop-hook polling, between-task checks, or the v1.5 channel (D2).
 - **Idle sessions:** does an idle session start a new turn on a monitor notification? Confirm in the dry run.
 - **Agent votes are cheap.** If agent quorums rubber-stamp, switch B1/B9 to `human_quorum` on the Rules tab.

@@ -1,5 +1,5 @@
 {
-  "name": "h1-e2e",
+  "name": "c1-e2e",
   "private": true,
   "description": "End-to-end runs of the CLI and the board against the local hub",
   "scripts": {

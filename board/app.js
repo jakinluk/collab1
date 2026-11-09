@@ -1,7 +1,7 @@
-/* HackathonOne board: state, rendering and actions. Demo mode runs fully offline; live mode talks to the hub (CONTRACT §4, §7). */
+/* CollabOne board: state, rendering and actions. Demo mode runs fully offline; live mode talks to the hub (CONTRACT §4, §7). */
 (function () {
   'use strict';
-  const H1 = window.H1;
+  const C1 = window.C1;
 
   /* ---------------------------------------------------------------- helpers */
 
@@ -105,7 +105,7 @@
     r.setAttribute('stroke-width', '2');
     svg.style.color = 'var(--accent)';
     const p = document.createElementNS(SVGNS, 'path');
-    p.setAttribute('d', 'M9 9v14 M9 16h8 M17 9v14 M21.5 12l3-3v14');
+    p.setAttribute('d', 'M17.5 10.6A6.6 6.6 0 1 0 17.5 21.4 M21.5 12l3-3v14');
     p.setAttribute('fill', 'none');
     p.setAttribute('stroke', 'currentColor');
     p.setAttribute('stroke-width', '2.4');
@@ -163,7 +163,7 @@
     const st = store();
     if (!st) return fallback;
     try {
-      const v = st.getItem('h1.pref.' + key);
+      const v = st.getItem('c1.pref.' + key);
       return v === null ? fallback : JSON.parse(v);
     } catch (e) {
       return fallback;
@@ -174,7 +174,7 @@
     const st = store();
     if (!st) return;
     try {
-      st.setItem('h1.pref.' + key, JSON.stringify(value));
+      st.setItem('c1.pref.' + key, JSON.stringify(value));
     } catch (e) {
       /* storage unavailable */
     }
@@ -347,7 +347,7 @@
     return h(
       'header',
       { class: 'topbar' },
-      h('div', { class: 'brand' }, brandMark(), h('span', { text: 'HackathonOne' })),
+      h('div', { class: 'brand' }, brandMark(), h('span', { text: 'CollabOne' })),
       S.data.projects.length
         ? h(
             'label',
@@ -445,7 +445,7 @@
           ? h('span', { class: 'avatar lg', title: 'Signed in as ' + S.data.me.name, 'aria-label': 'Signed in as ' + S.data.me.name, text: initials(S.data.me.name) })
           : null,
         S.mode === 'live'
-          ? h('button', { class: 'btn icon-only', 'aria-label': 'Sign out', onclick: () => H1.Auth.signOut() }, icon('logout'))
+          ? h('button', { class: 'btn icon-only', 'aria-label': 'Sign out', onclick: () => C1.Auth.signOut() }, icon('logout'))
           : null
       )
     );
@@ -460,7 +460,7 @@
         'section',
         { class: 'panel', style: { padding: '24px' } },
         h('h2', { text: 'No projects yet' }),
-        h('p', { class: 'muted', text: 'Start one here, or run /h1:project new in Claude Code and approve it on the right.' }),
+        h('p', { class: 'muted', text: 'Start one here, or run /c1:project new in Claude Code and approve it on the right.' }),
         h('button', { class: 'btn primary', 'data-focus-key': 'new-project', onclick: () => openProjectEditor(null) }, icon('plus'), 'New project')
       );
       return h('div', { class: 'board-layout' }, h('div', { class: 'board-main' }, empty, eventLog()), rail());
@@ -565,7 +565,7 @@
       return h(
         'section',
         { class: 'panel goal' },
-        h('div', null, projectMeta(p), h('div', { class: 'eyebrow', text: 'No goal yet' }), h('p', { class: 'muted', text: 'Set one with /h1:goal in Claude Code, then approve it here.' }))
+        h('div', null, projectMeta(p), h('div', { class: 'eyebrow', text: 'No goal yet' }), h('p', { class: 'muted', text: 'Set one with /c1:goal in Claude Code, then approve it here.' }))
       );
     }
     const dod = dodState(p);
@@ -1155,7 +1155,7 @@
         S.data.rules.version += 1;
         demoEvent('broadcast', 'rules.updated', 'human', 'Rules v' + S.data.rules.version + ': ' + code + ' changed by ' + S.data.me.name);
       } else {
-        await H1.Api.action('rules.set', { code, patch });
+        await C1.Api.action('rules.set', { code, patch });
         await refreshRules();
       }
       S.editingRule = null;
@@ -1170,7 +1170,7 @@
 
   function tokensTab() {
     const jc = S.joinCode;
-    const cmd = 'h1 join --code ' + (jc ? jc.code : 'XXXX-XXXX') + ' --api ' + location.origin;
+    const cmd = 'c1 join --code ' + (jc ? jc.code : 'XXXX-XXXX') + ' --api ' + location.origin;
     return h(
       'div',
       { class: 'split' },
@@ -1193,7 +1193,7 @@
           'ol',
           { class: 'steps' },
           h('li', { text: 'On the Mac, open Claude Code in the hackathon repo.' }),
-          h('li', { text: 'Run /h1:join and paste the code, or run the command above.' }),
+          h('li', { text: 'Run /c1:join and paste the code, or run the command above.' }),
           h('li', { text: 'The Mac appears in the list on the right.' })
         ),
         h('div', null, h('button', { class: 'btn primary', 'data-focus-key': 'new-code', onclick: createJoinCode }, icon('plus'), jc ? 'New code' : 'Create join code'))
@@ -1242,7 +1242,7 @@
         for (let i = 0; i < 8; i++) code += (i === 4 ? '-' : '') + pick();
         S.joinCode = { code, expiresAt: Date.now() + 10 * 60 * 1000 };
       } else {
-        S.joinCode = await H1.Api.joinCode();
+        S.joinCode = await C1.Api.joinCode();
       }
       render();
     } catch (e) {
@@ -1254,7 +1254,7 @@
     try {
       if (S.mode === 'demo') S.data.tokens = S.data.tokens.filter((t) => t.tokenId !== tokenId);
       else {
-        await H1.Api.revokeToken(tokenId);
+        await C1.Api.revokeToken(tokenId);
         await refreshTokens();
       }
       toast('Token revoked.');
@@ -1272,9 +1272,9 @@
     return h(
       'div',
       { class: 'release-banner', role: 'status' },
-      h('strong', { text: 'HackathonOne ' + r.version + ' released' }),
+      h('strong', { text: 'CollabOne ' + r.version + ' released' }),
       h('span', { text: r.notes || '' }),
-      h('span', { class: 'muted', text: r.minimum ? 'Agents must run /h1:update before their next change.' : 'Agents: run /h1:update, then /reload-plugins.' }),
+      h('span', { class: 'muted', text: r.minimum ? 'Agents must run /c1:update before their next change.' : 'Agents: run /c1:update, then /reload-plugins.' }),
       h('button', { class: 'btn sm primary', onclick: () => location.reload() }, 'Reload the board'),
       h('button', { class: 'btn sm', 'aria-label': 'Dismiss', onclick: () => ((S.releaseBanner = null), render()) }, 'Dismiss')
     );
@@ -1285,7 +1285,7 @@
     return h(
       'section',
       { style: { display: 'grid', gap: '10px' }, 'aria-labelledby': 'release-h' },
-      h('div', { class: 'section-title' }, h('h2', { id: 'release-h', text: 'HackathonOne releases' }), h('span', { class: 'meta', text: 'Announces a new plugin version to every connected Mac' })),
+      h('div', { class: 'section-title' }, h('h2', { id: 'release-h', text: 'CollabOne releases' }), h('span', { class: 'meta', text: 'Announces a new plugin version to every connected Mac' })),
       h(
         'p',
         { class: r ? '' : 'muted', id: 'release-current' },
@@ -1293,7 +1293,7 @@
       ),
       h(
         'p',
-        { class: 'muted', text: 'Bump plugin/.claude-plugin/plugin.json and merge it into the HackathonOne repo first: Claude Code only ships a plugin whose version changed. A minimum version stops older Macs from changing anything until they update.' }
+        { class: 'muted', text: 'Bump plugin/.claude-plugin/plugin.json and merge it into the CollabOne repo first: Claude Code only ships a plugin whose version changed. A minimum version stops older Macs from changing anything until they update.' }
       ),
       h(
         'form',
@@ -1323,9 +1323,9 @@
     try {
       if (S.mode === 'demo') {
         S.data.release = { latest: payload.version, minimum: payload.minimum, notes: payload.notes, publishedAt: Date.now(), by: S.data.me.id };
-        demoEvent('broadcast', 'tool.released', 'human', 'HackathonOne ' + payload.version + ' released: ' + payload.notes);
+        demoEvent('broadcast', 'tool.released', 'human', 'CollabOne ' + payload.version + ' released: ' + payload.notes);
       } else {
-        S.data.release = await H1.Api.action('release.publish', payload).then((r) => r.result || r);
+        S.data.release = await C1.Api.action('release.publish', payload).then((r) => r.result || r);
       }
       toast('Release ' + payload.version + ' published.');
       render();
@@ -1352,7 +1352,7 @@
         field('set-lease', 'Lease length (seconds)', 'How long a booking survives without a heartbeat.', h('input', { id: 'set-lease', type: 'number', min: '120', value: String(st.leaseTtlSec || 900) })),
         field('set-max', 'Max bookings per seat', 'Empty means no cap. Switch on if one seat starts starving the others.', h('input', { id: 'set-max', type: 'number', min: '1', value: st.maxBookingsPerSeat == null ? '' : String(st.maxBookingsPerSeat), placeholder: 'No cap' })),
         field('set-contest', 'Default contest window (minutes)', 'Used when a rule row sets no contest window.', h('input', { id: 'set-contest', type: 'number', min: '0', value: String(st.defaultContestMin == null ? 10 : st.defaultContestMin) })),
-        field('set-tool-repo', 'HackathonOne repo (git URL)', 'Where fixes to HackathonOne itself go. /h1:bug files them into the "HackathonOne fixes" project.', h('input', { id: 'set-tool-repo', value: st.toolRepoUrl || '', placeholder: 'git@github.com:org/hakatonOne.git' })),
+        field('set-tool-repo', 'CollabOne repo (git URL)', 'Where fixes to CollabOne itself go. /c1:bug files them into the "CollabOne fixes" project.', h('input', { id: 'set-tool-repo', value: st.toolRepoUrl || '', placeholder: 'git@github.com:org/collab1.git' })),
         h('div', { style: { alignSelf: 'end' } }, h('button', { class: 'btn primary', type: 'submit' }, 'Save settings'))
       ),
       releaseSection(),
@@ -1378,7 +1378,7 @@
         S.data.settings = Object.assign({}, S.data.settings, payload);
         demoEvent('broadcast', 'settings.updated', 'human', 'Hub settings changed by ' + S.data.me.name);
       } else {
-        const r = await H1.Api.action('settings.set', payload);
+        const r = await C1.Api.action('settings.set', payload);
         S.data.settings = (r && r.result) || Object.assign({}, S.data.settings, payload);
       }
       toast('Settings saved.');
@@ -1534,7 +1534,7 @@
         "hackathon",
         "mobile"
       ],
-      "notes": "Run the app on the iOS Simulator with npx expo run:ios; check shared h1-- skills for the team's working recipe first."
+      "notes": "Run the app on the iOS Simulator with npx expo run:ios; check shared c1-- skills for the team's working recipe first."
     }
   };
 
@@ -2142,7 +2142,7 @@
           demoEvent('broadcast', 'project.updated', 'human', 'Project ' + p.name + ' settings changed by ' + S.data.me.name, p.id);
         }
       } else {
-        await H1.Api.action(d.isNew ? 'project.create' : 'project.update', payload);
+        await C1.Api.action(d.isNew ? 'project.create' : 'project.update', payload);
         if (d.isNew) S.selectedProjectId = payload.id;
         await loadBoard();
       }
@@ -2322,7 +2322,7 @@
         S.data.proposals = S.data.proposals.filter((x) => x.id !== pid);
         demoEvent('decisions', 'proposal.approved', 'human', pid + ' approved by ' + S.data.me.name + ': ' + p.summary, p.payload && p.payload.projectId);
       } else {
-        await H1.Api.approve(pid);
+        await C1.Api.approve(pid);
         await refreshProposals();
       }
       toast(pid + ' approved.');
@@ -2341,7 +2341,7 @@
         S.data.proposals = S.data.proposals.filter((x) => x.id !== pid);
         demoEvent('decisions', 'proposal.rejected', 'human', pid + ' rejected by ' + S.data.me.name, p && p.payload && p.payload.projectId);
       } else {
-        await H1.Api.reject(pid);
+        await C1.Api.reject(pid);
         await refreshProposals();
       }
       toast(pid + ' rejected.');
@@ -2383,7 +2383,7 @@
             e.resolution = { text, by: S.data.me.id, at: Date.now(), contestUntil: Date.now() + ((rule && rule.contestMin) || 10) * 60000 };
             demoEvent('escalations', 'escalation.resolved', 'human', e.id + ' resolved by ' + S.data.me.name + ': ' + text, e.projectId, e.ticketId);
           } else {
-            await H1.Api.resolve(eid, text, reason);
+            await C1.Api.resolve(eid, text, reason);
             await refreshEscalations();
           }
           toast(e.id + ' resolved. Contest window is open.');
@@ -2436,7 +2436,7 @@
             });
             demoEvent('escalations', 'escalation.contested', 'human', e.id + ' contested by ' + S.data.me.name + '; human vote ' + did + ' opened', e.projectId, e.ticketId);
           } else {
-            await H1.Api.contest(eid, reason);
+            await C1.Api.contest(eid, reason);
             await Promise.all([refreshEscalations(), refreshDecisions()]);
           }
           toast(e.id + ' contested. A human vote is open.');
@@ -2469,7 +2469,7 @@
             d.votes.push({ seat: S.data.me.id, option, by: 'human', why, ts: Date.now() });
             demoEvent('decisions', 'vote.cast', 'human', S.data.me.name + ' voted ' + option + ' on ' + d.id, d.projectId);
           } else {
-            await H1.Api.vote(did, option, why);
+            await C1.Api.vote(did, option, why);
             await refreshDecisions();
           }
           toast('Vote recorded.');
@@ -2529,22 +2529,22 @@
   function startDemo() {
     S.mode = 'demo';
     S.conn = 'demo';
-    S.data = H1.demoData();
+    S.data = C1.demoData();
     S.selectedProjectId = pref('project', null);
     if (!S.data.projects.find((p) => p.id === S.selectedProjectId)) S.selectedProjectId = S.data.projects[0].id;
     render();
     handleHash();
     setInterval(() => {
       if (S.demoPaused || document.querySelector('dialog[open]')) return;
-      if (S.demoStep >= H1.demoSteps.length) {
+      if (S.demoStep >= C1.demoSteps.length) {
         const keep = { me: S.data.me };
-        S.data = H1.demoData();
+        S.data = C1.demoData();
         S.data.me = keep.me;
         S.demoStep = 0;
         render();
         return;
       }
-      const env = H1.demoSteps[S.demoStep++](S.data, Date.now());
+      const env = C1.demoSteps[S.demoStep++](S.data, Date.now());
       pushEvent(env);
       render();
       if (S.drawerTicketId && env.ticketId === S.drawerTicketId) renderDrawer();
@@ -2567,7 +2567,7 @@
   }
 
   async function loadBoard() {
-    const b = await H1.Api.board(S.selectedProjectId);
+    const b = await C1.Api.board(S.selectedProjectId);
     const d = S.data;
     d.projects = list(b.projects, 'projects');
     if (!S.selectedProjectId || !d.projects.find((p) => p.id === S.selectedProjectId)) S.selectedProjectId = (d.projects[0] || {}).id || null;
@@ -2583,7 +2583,7 @@
     d.proposals = list(b.proposals, 'proposals');
     d.knowledge = list(b.knowledge, 'knowledge');
     if (b.rules) d.rules = normalizeRules(b.rules);
-    else d.rules = normalizeRules(await H1.Api.rules(S.selectedProjectId).catch(() => null));
+    else d.rules = normalizeRules(await C1.Api.rules(S.selectedProjectId).catch(() => null));
     if (b.settings) d.settings = b.settings;
     if (typeof b.lastSeq === 'number') d.lastSeq = Math.max(d.lastSeq, b.lastSeq);
     if (Array.isArray(b.events)) d.events = b.events.slice(-100);
@@ -2592,7 +2592,7 @@
       d.projects
         .filter((p) => p.id !== S.selectedProjectId)
         .map((p) =>
-          H1.Api.get('/projects/' + encodeURIComponent(p.id) + '/tickets')
+          C1.Api.get('/projects/' + encodeURIComponent(p.id) + '/tickets')
             .then((r) => {
               const ts = list(r, 'tickets');
               d.tickets = d.tickets.filter((t) => t.projectId !== p.id).concat(ts);
@@ -2602,7 +2602,7 @@
     );
     if (!d.goals[S.selectedProjectId] && S.selectedProjectId) {
       try {
-        const g = await H1.Api.get('/projects/' + encodeURIComponent(S.selectedProjectId) + '/goal');
+        const g = await C1.Api.get('/projects/' + encodeURIComponent(S.selectedProjectId) + '/goal');
         const goal = g && 'goal' in g ? g.goal : g;
         if (goal && Array.isArray(goal.definitionOfDone)) d.goals[S.selectedProjectId] = goal;
       } catch (e) {
@@ -2614,7 +2614,7 @@
 
   async function loadHistory() {
     if (S.data.events.length || !S.data.lastSeq) return;
-    const r = await H1.Api.events(Math.max(0, S.data.lastSeq - 100)).catch(() => null);
+    const r = await C1.Api.events(Math.max(0, S.data.lastSeq - 100)).catch(() => null);
     const evs = list(r, 'events');
     if (!evs.length) return;
     S.data.events = evs.slice(-100);
@@ -2623,7 +2623,7 @@
 
   async function refreshTicket(tid) {
     if (!tid) return;
-    const r = await H1.Api.ticket(tid);
+    const r = await C1.Api.ticket(tid);
     const t = r && r.ticket ? r.ticket : r;
     if (!t || !t.id) return;
     const i = S.data.tickets.findIndex((x) => x.id === t.id);
@@ -2631,22 +2631,22 @@
     else S.data.tickets.push(t);
   }
   async function refreshEscalations() {
-    S.data.escalations = list(await H1.Api.escalations(), 'escalations');
+    S.data.escalations = list(await C1.Api.escalations(), 'escalations');
   }
   async function refreshDecisions() {
-    S.data.decisions = list(await H1.Api.decisions(), 'decisions');
+    S.data.decisions = list(await C1.Api.decisions(), 'decisions');
   }
   async function refreshProposals() {
-    S.data.proposals = list(await H1.Api.proposals(), 'proposals');
+    S.data.proposals = list(await C1.Api.proposals(), 'proposals');
   }
   async function refreshKnowledge() {
-    S.data.knowledge = list(await H1.Api.knowledge(), 'knowledge');
+    S.data.knowledge = list(await C1.Api.knowledge(), 'knowledge');
   }
   async function refreshRules() {
-    S.data.rules = normalizeRules(await H1.Api.rules(S.selectedProjectId));
+    S.data.rules = normalizeRules(await C1.Api.rules(S.selectedProjectId));
   }
   async function refreshTokens() {
-    S.data.tokens = list(await H1.Api.tokens(), 'tokens');
+    S.data.tokens = list(await C1.Api.tokens(), 'tokens');
   }
 
   const pending = { jobs: {}, timer: null };
@@ -2692,7 +2692,7 @@
     let more = true;
     let guard = 0;
     while (more && guard++ < 20) {
-      const r = await H1.Api.events(S.data.lastSeq);
+      const r = await C1.Api.events(S.data.lastSeq);
       const evs = list(r, 'events');
       evs.forEach(onEnvelope);
       more = evs.length >= 200;
@@ -2701,14 +2701,14 @@
   }
 
   function screen(title, bodyNodes) {
-    root.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'panel center-card' }, h('div', { class: 'brand' }, brandMark(), 'HackathonOne'), h('h1', { text: title }), bodyNodes)));
+    root.replaceChildren(h('div', { class: 'center-screen' }, h('div', { class: 'panel center-card' }, h('div', { class: 'brand' }, brandMark(), 'CollabOne'), h('h1', { text: title }), bodyNodes)));
   }
 
   function signInScreen(error) {
     screen('Sign in to the team board', [
       h('p', { class: 'muted', text: 'Use your hackathon account. Sign-in asks for your authenticator code.' }),
       error ? h('p', { class: 'chip bad', style: { whiteSpace: 'normal' }, text: error }) : null,
-      h('button', { class: 'btn primary', onclick: () => H1.Auth.signIn() }, 'Sign in'),
+      h('button', { class: 'btn primary', onclick: () => C1.Auth.signIn() }, 'Sign in'),
       h('p', { class: 'muted', style: { fontSize: '0.85rem' } }, 'Just looking? ', h('a', { href: '?demo', text: 'Open the demo board' }), '.'),
     ]);
   }
@@ -2734,7 +2734,7 @@
             return;
           }
           try {
-            await H1.Api.createSeat({
+            await C1.Api.createSeat({
               id,
               name: v('seat-name') || id,
               plan: v('seat-plan'),
@@ -2762,13 +2762,13 @@
 
   async function bootLive() {
     try {
-      const me = await H1.Api.me().catch((e) => {
+      const me = await C1.Api.me().catch((e) => {
         if (e.status === 404 || e.code === 'not_found' || e.code === 'forbidden') return null;
         throw e;
       });
       const seat = me && (me.seat || (me.id ? me : null));
       if (!seat) {
-        seatScreen(H1.Auth.claims());
+        seatScreen(C1.Auth.claims());
         return;
       }
       S.data.me = seat;
@@ -2777,7 +2777,7 @@
       S.historyLoading = true;
       await loadHistory();
       S.historyLoading = false;
-      H1.Api.release()
+      C1.Api.release()
         .then((r) => ((S.data.release = (r && r.release) || null), render()))
         .catch(() => null);
       refreshTokens()
@@ -2785,11 +2785,11 @@
         .catch(() => null);
       handleHash();
       if (rt) rt.stop();
-      rt = new H1.Realtime({
+      rt = new C1.Realtime({
         httpHost: S.config.events.httpHost,
         realtimeUrl: S.config.events.realtimeUrl,
-        channels: ['/h1/all', '/h1/p/*', '/h1/s/' + seat.id],
-        getToken: () => H1.Auth.idToken(),
+        channels: ['/c1/all', '/c1/p/*', '/c1/s/' + seat.id],
+        getToken: () => C1.Auth.idToken(),
         onEvent: onEnvelope,
         onStatus: (s) => {
           S.conn = s;
@@ -2811,16 +2811,16 @@
     S.conn = 'connecting';
     S.config = config;
     S.data = emptyData();
-    H1.Auth.init(config);
-    H1.Api.init(config);
+    C1.Auth.init(config);
+    C1.Api.init(config);
     try {
-      const restoreHash = await H1.Auth.handleCallback();
+      const restoreHash = await C1.Auth.handleCallback();
       if (restoreHash) history.replaceState(null, '', location.pathname + restoreHash);
     } catch (e) {
       signInScreen(e.message);
       return;
     }
-    const token = await H1.Auth.idToken();
+    const token = await C1.Auth.idToken();
     if (!token) {
       signInScreen();
       return;

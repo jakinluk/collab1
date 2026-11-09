@@ -1,8 +1,8 @@
 import type { RepoLike } from './repos';
 
-/** The fix queue for HackathonOne itself is an ordinary project with this id. */
-export const TOOL_PROJECT_ID = 'hackathonone';
-export const TOOL_REPO_NAME = 'hakatonOne';
+/** The fix queue for CollabOne itself is an ordinary project with this id. */
+export const TOOL_PROJECT_ID = 'collabone';
+export const TOOL_REPO_NAME = 'collab1';
 
 export type ToolArea = 'plugin' | 'board' | 'backend' | 'docs';
 
@@ -36,7 +36,7 @@ export const toolRepo = (url: string): RepoLike => ({
   ],
   instructionsPath: 'README.md',
   laneMap: (Object.keys(TOOL_AREAS) as ToolArea[]).flatMap((a) => TOOL_AREAS[a].paths.map((glob) => ({ glob, lane: TOOL_AREAS[a].lanes[0] }))),
-  prLabels: ['hackathonone-fix'],
+  prLabels: ['collabone-fix'],
   notes:
-    'Fixes to HackathonOne itself, merged into main. Backend and board fixes reach everyone with the next deploy. Plugin fixes reach Macs only after a release: bump plugin/.claude-plugin/plugin.json and publish it (board Settings → Releases, or h1 release propose).',
+    'Fixes to CollabOne itself, merged into main. Backend and board fixes reach everyone with the next deploy. Plugin fixes reach Macs only after a release: bump plugin/.claude-plugin/plugin.json and publish it (board Settings → Releases, or c1 release propose).',
 });

@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'h1-repos-'));
-process.env.H1_HOME = home;
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-repos-'));
+process.env.C1_HOME = home;
 
 const repos = await import('../lib/repos.mjs');
 const { buildProjectPayload, parseRepoSpec } = await import('../lib/commands.mjs');
@@ -25,7 +25,7 @@ test('remote URLs normalize across ssh, https, .git and case', () => {
 });
 
 test('local links are stored per project and resolved', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'h1-checkout-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-checkout-'));
   repos.linkRepo('p1', 'platform', dir);
   assert.equal(repos.linkedPath('p1', 'platform'), path.resolve(dir));
   assert.equal(repos.linkedPath('p2', 'platform'), null);
@@ -38,7 +38,7 @@ test('local links are stored per project and resolved', () => {
 });
 
 test('identifyRepo matches a checkout by its origin remote', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'h1-git-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-git-'));
   execFileSync('git', ['init', '-q', dir]);
   execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', 'git@github.com:acme/mobile.git']);
   fs.mkdirSync(path.join(dir, 'src'));

@@ -1,17 +1,17 @@
 {
-  "name": "hackathonone",
+  "name": "collabone",
   "owner": {
     "name": "Łukasz Kiedrowski",
     "url": "https://github.com/jakinluk"
   },
   "metadata": {
-    "description": "HackathonOne: run a hackathon where Claude Code does the building"
+    "description": "CollabOne: people and Claude Code agents working on shared projects. First mode: team hackathons"
   },
   "plugins": [
     {
-      "name": "h1",
+      "name": "c1",
       "source": "./plugin",
-      "description": "HackathonOne: shared board, tickets, blocker rules, votes and skill sharing for a team hackathon run by Claude Code"
+      "description": "CollabOne: shared board, tickets, blocker rules, votes and skill sharing for people and their Claude Code agents. First mode: team hackathons"
     }
   ]
 }

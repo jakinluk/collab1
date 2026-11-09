@@ -6,54 +6,54 @@ import { watch } from './watch.mjs';
 import * as T from './tooling.mjs';
 import { clientVersion } from './version.mjs';
 
-export const HELP = `h1 — HackathonOne CLI (talks to the HackathonOne hub with this Mac's agent token)
+export const HELP = `c1 — CollabOne CLI (talks to the CollabOne hub with this Mac's agent token)
 
 Setup
-  h1 join --code XXXX-XXXX [--api <board URL>] [--project <id>]   connect this Mac (code from the board: Tokens & Macs)
-  h1 doctor [--api <board URL>]                                   connectivity checks (DNS, HTTPS, WebSocket, GitHub, Anthropic)
-  h1 status                                                       hub, seat and project summary
-  h1 me [mode <solo|subagents|multi_session|factory>] [pin <project>] [lanes <a,b>] [autopilot on|off] [limit <n|none>]
+  c1 join --code XXXX-XXXX [--api <board URL>] [--project <id>]   connect this Mac (code from the board: Tokens & Macs)
+  c1 doctor [--api <board URL>]                                   connectivity checks (DNS, HTTPS, WebSocket, GitHub, Anthropic)
+  c1 status                                                       hub, seat and project summary
+  c1 me [mode <solo|subagents|multi_session|factory>] [pin <project>] [lanes <a,b>] [autopilot on|off] [limit <n|none>]
 
 Projects, goals, plans, rules (human actions: these create proposals a human approves in the board)
-  h1 project list | show [<id>]
-  h1 project propose-new --name <n> --repo name=url[@branch] [--preset nx-monorepo|node-app|expo-app] [--id <id>] [--lane l]
+  c1 project list | show [<id>]
+  c1 project propose-new --name <n> --repo name=url[@branch] [--preset nx-monorepo|node-app|expo-app] [--id <id>] [--lane l]
                          [--description "…"] [--link label=https://…] [--demo-url https://…] [--stage s] [--tag t] [--file project.json]
-  h1 project propose-update <id> --file project.json | [--description …] [--link …] [--tag …] [--repo …]
-  h1 project freeze|archive|activate|demo <id> | phase <id> <plan|build|freeze|demo>
-  h1 goal show [--project <id>] | h1 goal propose --file goal.json [--project <id>]
-  h1 plan propose --file tasks.json [--project <id>]
-  h1 rules show [--project <id>] | h1 rules propose --code B3 --set maxAttempts=2 [--file patch.json] [--project <id>]
+  c1 project propose-update <id> --file project.json | [--description …] [--link …] [--tag …] [--repo …]
+  c1 project freeze|archive|activate|demo <id> | phase <id> <plan|build|freeze|demo>
+  c1 goal show [--project <id>] | c1 goal propose --file goal.json [--project <id>]
+  c1 plan propose --file tasks.json [--project <id>]
+  c1 rules show [--project <id>] | c1 rules propose --code B3 --set maxAttempts=2 [--file patch.json] [--project <id>]
 
-Repos (local checkouts on this Mac; stored in ~/.h1/repos.json, never sent to the hub)
-  h1 repo list | show <name> | link <name> [path] | unlink <name> | path <name>   (path: exit 2 if not linked)
+Repos (local checkouts on this Mac; stored in ~/.c1/repos.json, never sent to the hub)
+  c1 repo list | show <name> | link <name> [path] | unlink <name> | path <name>   (path: exit 2 if not linked)
 
 Tickets
-  h1 ticket list [--status s] [--ready] | show <id> | add --file t.json
-  h1 ticket next [--n 3] [--lanes a,b] [--worker id] [--session id]
-  h1 ticket book <id> | heartbeat <id> | start <id> | review-ready <id> --pr <url> | block <id> --note "…"
-  h1 ticket release <id> --reason "…" [--failed]
-  h1 review next | h1 review done <id> --outcome merged|changes_requested [--note "…"]
+  c1 ticket list [--status s] [--ready] | show <id> | add --file t.json
+  c1 ticket next [--n 3] [--lanes a,b] [--worker id] [--session id]
+  c1 ticket book <id> | heartbeat <id> | start <id> | review-ready <id> --pr <url> | block <id> --note "…"
+  c1 ticket release <id> --reason "…" [--failed]
+  c1 review next | c1 review done <id> --outcome merged|changes_requested [--note "…"]
 
 Blockers and votes
-  h1 raise blocker|issue|urgent|help --rule B3 --summary "…" [--detail "…" | --detail-file f] [--ticket T1] [--option "…"]
-  h1 answer <eid> --text "…"
-  h1 decide list | show <did> | vote <did> <option|number> --why "…"
+  c1 raise blocker|issue|urgent|help --rule B3 --summary "…" [--detail "…" | --detail-file f] [--ticket T1] [--option "…"]
+  c1 answer <eid> --text "…"
+  c1 decide list | show <did> | vote <did> <option|number> --why "…"
 
 Knowledge
-  h1 share tip "…" [--name n] [--tags a,b] [--project id]
-  h1 share playbook <file.md> --name "…" | h1 share skill <dir> [--name n] | h1 retire <kid>
-  h1 kb search <words> | h1 sync
+  c1 share tip "…" [--name n] [--tags a,b] [--project id]
+  c1 share playbook <file.md> --name "…" | c1 share skill <dir> [--name n] | c1 retire <kid>
+  c1 kb search <words> | c1 sync
 
-HackathonOne itself
-  h1 bug "what went wrong" [--detail "…"] [--area plugin|board|backend|docs] [--urgent]   report a problem with HackathonOne
-  h1 version                        installed version against the hub's latest release (exit 3 if an update is required)
-  h1 update [--marketplace name]    update the plugin through Claude Code (then /reload-plugins)
-  h1 release show | propose --version x.y.z --notes "…" [--minimum x.y.z]   publish a plugin release (a human approves)
+CollabOne itself
+  c1 bug "what went wrong" [--detail "…"] [--area plugin|board|backend|docs] [--urgent]   report a problem with CollabOne
+  c1 version                        installed version against the hub's latest release (exit 3 if an update is required)
+  c1 update [--marketplace name]    update the plugin through Claude Code (then /reload-plugins)
+  c1 release show | propose --version x.y.z --notes "…" [--minimum x.y.z]   publish a plugin release (a human approves)
 
 Other
-  h1 say "…" [--to <seat>] | h1 board [--project id] | h1 events [--since n] [--limit n]
-  h1 watch                          the plugin monitor (subscribes to hub events)
-  h1 hook <session-start|guard|heartbeat|needs-input|autopilot-stop|session-end>   used by plugin hooks
+  c1 say "…" [--to <seat>] | c1 board [--project id] | c1 events [--since n] [--limit n]
+  c1 watch                          the plugin monitor (subscribes to hub events)
+  c1 hook <session-start|guard|heartbeat|needs-input|autopilot-stop|session-end>   used by plugin hooks
 
 Global: --json for machine-readable output, --project <id> to target another project.
 Exit codes: 0 ok · 1 error · 2 conflict / nothing ready · 3 update required.`;
@@ -89,7 +89,7 @@ export async function main(argv) {
   const { positional, flags } = parseArgs(argv);
   const [cmd, ...rest] = positional;
   if (!cmd && flags.version === true) {
-    process.stdout.write(`h1 ${clientVersion()}\n`);
+    process.stdout.write(`c1 ${clientVersion()}\n`);
     return 0;
   }
   if (!cmd || flags.help || cmd === 'help') {
@@ -108,7 +108,7 @@ export async function main(argv) {
   }
   const fn = COMMANDS[cmd];
   if (!fn) {
-    process.stderr.write(`h1: unknown command "${cmd}". Run h1 --help.\n`);
+    process.stderr.write(`c1: unknown command "${cmd}". Run c1 --help.\n`);
     return 1;
   }
   try {
@@ -119,11 +119,11 @@ export async function main(argv) {
   } catch (e) {
     if (e instanceof ApiError) {
       if (flags.json) process.stdout.write(JSON.stringify({ error: { code: e.code, message: e.message, status: e.status, details: e.details } }, null, 2) + '\n');
-      else process.stderr.write(`h1: ${e.message}${e.code && !['invalid', 'error'].includes(e.code) ? ` (${e.code})` : ''}\n`);
+      else process.stderr.write(`c1: ${e.message}${e.code && !['invalid', 'error'].includes(e.code) ? ` (${e.code})` : ''}\n`);
       if (e.code === 'update_required') return UPDATE_EXIT;
       return CONFLICT_CODES.has(e.code) || e.status === 409 ? 2 : 1;
     }
-    process.stderr.write(`h1: ${e?.message ?? e}\n`);
+    process.stderr.write(`c1: ${e?.message ?? e}\n`);
     return 1;
   }
 }

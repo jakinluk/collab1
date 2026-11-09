@@ -343,9 +343,9 @@ describe('envelopes', () => {
     expect(e.summary.length).toBe(200);
     expect(e.stream).toBe('tasks');
     expect(Buffer.byteLength(JSON.stringify(e.data))).toBeLessThanOrEqual(MAX_DATA_BYTES);
-    expect(channelFor({ projectId: 'p1' })).toBe('/h1/p/p1');
-    expect(channelFor({ to: 'ania', projectId: 'p1' })).toBe('/h1/s/ania');
-    expect(channelFor({ to: 'humans' })).toBe('/h1/all');
+    expect(channelFor({ projectId: 'p1' })).toBe('/c1/p/p1');
+    expect(channelFor({ to: 'ania', projectId: 'p1' })).toBe('/c1/s/ania');
+    expect(channelFor({ to: 'humans' })).toBe('/c1/all');
     expect(envelope({ type: 'goal.set', from: 'a', fromKind: 'human', summary: 's' }).stream).toBe('broadcast');
     expect(envelope({ type: 'message', from: 'a', fromKind: 'human', summary: 's' }).stream).toBe('dm');
   });
@@ -360,10 +360,10 @@ describe('secrets', () => {
         'sk-ant-api03-abcdefghijklmnopqrstuvwxyz',
         '-----BEGIN OPENSSH PRIVATE KEY-----',
         'password = "Zx9!qL2#vB7@nM4$"',
-        'h1a_' + 'A'.repeat(43),
+        'c1a_' + 'A'.repeat(43),
       ].join('\n'),
     ).map((f) => f.type);
-    expect(types).toEqual(expect.arrayContaining(['aws-access-key-id', 'github-token', 'anthropic-api-key', 'private-key-block', 'generic-password', 'h1-agent-token']));
+    expect(types).toEqual(expect.arrayContaining(['aws-access-key-id', 'github-token', 'anthropic-api-key', 'private-key-block', 'generic-password', 'c1-agent-token']));
   });
   it('ignores placeholders and low-entropy values', () => {
     expect(scanSecrets('API_KEY=${API_KEY}\npassword: xxxxxxxxxxxxxxx\ntoken = <your-token-here>\nRun xcode-select first.')).toEqual([]);
@@ -373,7 +373,7 @@ describe('secrets', () => {
 describe('tokens', () => {
   it('generates and recognises agent tokens and join codes', () => {
     const tok = generateAgentToken();
-    expect(tok).toMatch(/^h1a_[A-Za-z0-9_-]{43}$/);
+    expect(tok).toMatch(/^c1a_[A-Za-z0-9_-]{43}$/);
     expect(isAgentToken(tok)).toBe(true);
     expect(isAgentToken('eyJhbGciOi...')).toBe(false);
     expect(generateJoinCode()).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);

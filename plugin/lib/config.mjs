@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { ensureDir, h1Home, readJson, writeJson } from './util.mjs';
+import { ensureDir, c1Home, readJson, writeJson } from './util.mjs';
 
-const SERVICE = 'h1-agent-token';
+const SERVICE = 'c1-agent-token';
 
-export const configPath = () => path.join(h1Home(), 'config.json');
-export const statePath = () => path.join(h1Home(), 'state.json');
-export const tokenFilePath = () => path.join(h1Home(), 'token');
-export const cacheDir = () => ensureDir(path.join(h1Home(), 'cache'));
-export const sessionsDir = () => ensureDir(path.join(h1Home(), 'sessions'));
+export const configPath = () => path.join(c1Home(), 'config.json');
+export const statePath = () => path.join(c1Home(), 'state.json');
+export const tokenFilePath = () => path.join(c1Home(), 'token');
+export const cacheDir = () => ensureDir(path.join(c1Home(), 'cache'));
+export const sessionsDir = () => ensureDir(path.join(c1Home(), 'sessions'));
 
 export const loadConfig = () => readJson(configPath(), null);
 export const saveConfig = (cfg) => writeJson(configPath(), cfg);
@@ -22,7 +22,7 @@ export function saveState(patch) {
 }
 
 const useKeychain = () => {
-  if (process.env.H1_TOKEN_FILE === '1' || process.platform !== 'darwin') return false;
+  if (process.env.C1_TOKEN_FILE === '1' || process.platform !== 'darwin') return false;
   try {
     execFileSync('/usr/bin/which', ['security'], { stdio: 'ignore' });
     return true;
@@ -45,14 +45,14 @@ export function storeToken(seatId, token) {
       /* fall through to file */
     }
   }
-  ensureDir(h1Home());
+  ensureDir(c1Home());
   fs.writeFileSync(tokenFilePath(), token + '\n', { mode: 0o600 });
   fs.chmodSync(tokenFilePath(), 0o600);
   return 'file';
 }
 
 export function readToken(seatId) {
-  if (process.env.H1_TOKEN) return process.env.H1_TOKEN;
+  if (process.env.C1_TOKEN) return process.env.C1_TOKEN;
   if (useKeychain() && seatId) {
     try {
       return execFileSync('security', ['find-generic-password', '-s', SERVICE, '-a', seatId, '-w'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -92,4 +92,4 @@ export function removeSessionTicket(sessionId, id) {
 }
 
 export const currentSessionId = (flags = {}) =>
-  (typeof flags.session === 'string' && flags.session) || process.env.H1_SESSION_ID || process.env.CLAUDE_SESSION_ID || undefined;
+  (typeof flags.session === 'string' && flags.session) || process.env.C1_SESSION_ID || process.env.CLAUDE_SESSION_ID || undefined;

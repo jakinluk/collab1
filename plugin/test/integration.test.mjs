@@ -32,8 +32,8 @@ function tarOf(files) {
   return Buffer.concat(blocks);
 }
 
-const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'h1');
-const TOKEN = 'h1a_' + 'A'.repeat(43);
+const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'c1');
+const TOKEN = 'c1a_' + 'A'.repeat(43);
 
 function mockHub() {
   const calls = [];
@@ -59,7 +59,7 @@ function mockHub() {
       if (p === '/join' && req.method === 'POST') {
         if (json.code !== 'ABCD-EFGH') return send(401, { error: { code: 'unauthorized', message: 'join code is invalid' } });
         const base = `http://127.0.0.1:${server.address().port}`;
-        return send(201, { token: TOKEN, tokenId: 'tk1', seatId: 'lukasz', projectId: 'p1', apiUrl: `${base}/api/v1`, boardUrl: base, events: { httpHost: 'h.example', realtimeUrl: 'wss://r.example/event/realtime', namespace: 'h1' }, expiresAt: Date.now() + 864e5 });
+        return send(201, { token: TOKEN, tokenId: 'tk1', seatId: 'lukasz', projectId: 'p1', apiUrl: `${base}/api/v1`, boardUrl: base, events: { httpHost: 'h.example', realtimeUrl: 'wss://r.example/event/realtime', namespace: 'c1' }, expiresAt: Date.now() + 864e5 });
       }
       if (!authed) return send(401, { error: { code: 'unauthorized', message: 'missing credentials' } });
       if (p === '/me' && req.method === 'GET') return send(200, { seat, actor: { seatId: 'lukasz', kind: 'agent' }, projectId: seat.projects[0], rules: { version: 4, digest: 'B1 contract change → agent quorum' } });
@@ -118,9 +118,9 @@ function run(args, env, input) {
 test('CLI end to end against a mock hub', async (t) => {
   const { server, calls, tickets } = await mockHub();
   t.after(() => server.close());
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'h1-test-'));
-  const skills = fs.mkdtempSync(path.join(os.tmpdir(), 'h1-skills-'));
-  const env = { H1_HOME: home, H1_TOKEN_FILE: '1', H1_SKILLS_DIR: skills, H1_SESSION_ID: '', CLAUDE_SESSION_ID: '' };
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-test-'));
+  const skills = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-skills-'));
+  const env = { C1_HOME: home, C1_TOKEN_FILE: '1', C1_SKILLS_DIR: skills, C1_SESSION_ID: '', CLAUDE_SESSION_ID: '' };
   const base = `http://127.0.0.1:${server.address().port}`;
 
   const bad = await run(['join', '--code', 'ZZZZ-ZZZZ', '--api', base], env);
@@ -192,7 +192,7 @@ test('CLI end to end against a mock hub', async (t) => {
   assert.equal(own.code, 0, own.stderr);
   const unknownRepo = await run(['hook', 'guard'], env, hookIn('package.json'));
   assert.equal(unknownRepo.code, 0, 'repo not identified and no fallback: hot paths not enforced');
-  const hot = await run(['hook', 'guard'], { ...env, H1_GUARD_FALLBACK: 'nx-monorepo' }, hookIn('package.json'));
+  const hot = await run(['hook', 'guard'], { ...env, C1_GUARD_FALLBACK: 'nx-monorepo' }, hookIn('package.json'));
   assert.equal(hot.code, 2);
   assert.match(hot.stderr, /protected shared path/);
   const warn = await run(['hook', 'guard'], env, hookIn('docs/notes.md'));
@@ -201,28 +201,28 @@ test('CLI end to end against a mock hub', async (t) => {
   assert.equal(warnOut.hookSpecificOutput.hookEventName, 'PreToolUse');
   assert.match(warnOut.hookSpecificOutput.additionalContext, /outside T1 pathsOwned/);
 
-  const unreachable = await run(['hook', 'session-start'], { ...env, H1_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'h1-empty-')) }, '{}');
+  const unreachable = await run(['hook', 'session-start'], { ...env, C1_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'c1-empty-')) }, '{}');
   assert.equal(unreachable.code, 0);
   assert.equal(unreachable.stdout.trim(), '');
 });
 
 test('skill archives with parent references are refused', async () => {
   const { extractSkill } = await import('../lib/skills.mjs');
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'h1-tar-'));
-  process.env.H1_SKILLS_DIR = path.join(work, 'skills');
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'c1-tar-'));
+  process.env.C1_SKILLS_DIR = path.join(work, 'skills');
   fs.mkdirSync(path.join(work, 'good'));
   fs.writeFileSync(path.join(work, 'good', 'SKILL.md'), '---\nname: x\n---\nhello\n');
   const good = path.join(work, 'good.tgz');
   execFileSync('tar', ['-czf', good, '-C', path.join(work, 'good'), '.']);
   const target = extractSkill(good, 'run-ios-sim');
   assert.ok(fs.existsSync(path.join(target, 'SKILL.md')));
-  assert.equal(path.basename(target), 'h1--run-ios-sim');
+  assert.equal(path.basename(target), 'c1--run-ios-sim');
 
   const evil = path.join(work, 'evil.tgz');
   fs.writeFileSync(evil, gzipSync(tarOf([['./SKILL.md', 'ok'], ['../pwn.txt', 'x']])));
   assert.throws(() => extractSkill(evil, 'evil'), /parent directory reference/);
   const abs = path.join(work, 'abs.tgz');
-  fs.writeFileSync(abs, gzipSync(tarOf([['/tmp/h1-pwn.txt', 'x']])));
+  fs.writeFileSync(abs, gzipSync(tarOf([['/tmp/c1-pwn.txt', 'x']])));
   assert.throws(() => extractSkill(abs, 'abs'), /absolute path/);
   assert.ok(!fs.existsSync(path.join(work, 'pwn.txt')));
 });

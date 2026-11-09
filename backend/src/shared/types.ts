@@ -288,11 +288,11 @@ export interface Settings {
   maxBookingsPerSeat?: number;
   defaultContestMin: number;
   rulesVersion: number;
-  /** Git URL of the HackathonOne repo itself; the fix queue project points at it. */
+  /** Git URL of the CollabOne repo itself; the fix queue project points at it. */
   toolRepoUrl?: string;
 }
 
-/** The latest published HackathonOne plugin version, announced to every connected Mac. */
+/** The latest published CollabOne plugin version, announced to every connected Mac. */
 export interface Release {
   latest: string;
   /** Clients below this version may only read until they update. */

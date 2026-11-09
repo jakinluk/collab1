@@ -1,8 +1,8 @@
 {
-  "name": "h1-backend",
+  "name": "c1-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "HackathonOne serverless hub: API, authorizer, fan-out, sweep and the CDK stack",
+  "description": "CollabOne serverless hub: API, authorizer, fan-out, sweep and the CDK stack",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

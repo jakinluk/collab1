@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 
-export const AGENT_TOKEN_PREFIX = 'h1a_';
-export const AGENT_TOKEN_RE = /^h1a_[A-Za-z0-9_-]{43}$/;
+export const AGENT_TOKEN_PREFIX = 'c1a_';
+export const AGENT_TOKEN_RE = /^c1a_[A-Za-z0-9_-]{43}$/;
 
 export const generateAgentToken = (): string => `${AGENT_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`;
 

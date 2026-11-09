@@ -33,8 +33,8 @@ test('AppSync client: init, subscribe to all channels, data, ka', async () => {
   const c = new AppSyncClient({
     httpHost: 'h.example',
     realtimeUrl: 'wss://r.example/event/realtime',
-    token: 'h1a_x',
-    channels: ['/h1/all', '/h1/p/p1', '/h1/s/me'],
+    token: 'c1a_x',
+    channels: ['/c1/all', '/c1/p/p1', '/c1/s/me'],
     WebSocketImpl: FakeSocket,
     onEvent: (e) => events.push(e),
     onReady: () => ready++,
@@ -47,8 +47,8 @@ test('AppSync client: init, subscribe to all channels, data, ka', async () => {
   assert.deepEqual(ws.sent[0], { type: 'connection_init' });
   ws.frame({ type: 'connection_ack', connectionTimeoutMs: 300000 });
   const subs = ws.sent.filter((m) => m.type === 'subscribe');
-  assert.deepEqual(subs.map((s) => s.channel), ['/h1/all', '/h1/p/p1', '/h1/s/me']);
-  assert.deepEqual(subs[0].authorization, { host: 'h.example', Authorization: 'h1a_x' });
+  assert.deepEqual(subs.map((s) => s.channel), ['/c1/all', '/c1/p/p1', '/c1/s/me']);
+  assert.deepEqual(subs[0].authorization, { host: 'h.example', Authorization: 'c1a_x' });
   for (const s of subs) ws.frame({ type: 'subscribe_success', id: s.id });
   assert.equal(ready, 1);
   assert.ok(statuses.includes('live'));
@@ -59,7 +59,7 @@ test('AppSync client: init, subscribe to all channels, data, ka', async () => {
 });
 
 test('AppSync client reconnects after a subscribe error', async () => {
-  const c = new AppSyncClient({ httpHost: 'h', realtimeUrl: 'wss://r', token: 't', channels: ['/h1/all'], WebSocketImpl: FakeSocket, onEvent: () => {} });
+  const c = new AppSyncClient({ httpHost: 'h', realtimeUrl: 'wss://r', token: 't', channels: ['/c1/all'], WebSocketImpl: FakeSocket, onEvent: () => {} });
   c.start();
   await tick();
   const first = FakeSocket.last;

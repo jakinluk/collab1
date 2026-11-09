@@ -7,7 +7,7 @@ export const authHeader = (httpHost, token) => ({ host: httpHost, Authorization:
 
 export const subprotocols = (httpHost, token) => ['aws-appsync-event-ws', `header-${b64url(JSON.stringify(authHeader(httpHost, token)))}`];
 
-export const channelsFor = ({ seatId }) => ['/h1/all', '/h1/p/*', `/h1/s/${seatId}`];
+export const channelsFor = ({ seatId }) => ['/c1/all', '/c1/p/*', `/c1/s/${seatId}`];
 
 /**
  * Minimal AppSync Events client.
@@ -159,7 +159,7 @@ export class AppSyncClient {
   }
 }
 
-/** One-shot connectivity probe used by `h1 doctor`. Resolves with ack timeout info or rejects. */
+/** One-shot connectivity probe used by `c1 doctor`. Resolves with ack timeout info or rejects. */
 export function probeAck({ httpHost, realtimeUrl, token, timeoutMs = 8000, WebSocketImpl = globalThis.WebSocket }) {
   return new Promise((resolve, reject) => {
     let ws;

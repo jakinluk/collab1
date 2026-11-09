@@ -1,4 +1,4 @@
-/* HackathonOne board — "ops room" dark by default, light theme, projector mode.
+/* CollabOne board — "ops room" dark by default, light theme, projector mode.
    Layout: top bar + tabs → all-projects strip → [goal, blocked lane, kanban, event log | right rail]. */
 :root {
   --bg: #0e1318;

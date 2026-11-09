@@ -1,7 +1,7 @@
-/* HackathonOne board: AppSync Events subscription (CONTRACT §7). Delivery is not confirmed, so the seq log is the truth. */
+/* CollabOne board: AppSync Events subscription (CONTRACT §7). Delivery is not confirmed, so the seq log is the truth. */
 (function () {
   'use strict';
-  const H1 = (window.H1 = window.H1 || {});
+  const C1 = (window.C1 = window.C1 || {});
 
   function b64url(str) {
     const bytes = new TextEncoder().encode(str);
@@ -165,5 +165,5 @@
     setTimeout(() => this.connect(), delay);
   };
 
-  H1.Realtime = Realtime;
+  C1.Realtime = Realtime;
 })();

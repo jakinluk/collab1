@@ -1,5 +1,5 @@
 /*
- * Local HackathonOne hub for end-to-end runs on one machine. NOT for the event.
+ * Local CollabOne hub for end-to-end runs on one machine. NOT for the event.
  *
  * It runs the real Hub and the real API router, authorizer decisions and channel routing,
  * with these stand-ins for the AWS services:
@@ -113,7 +113,7 @@ const files = {
 // ---------- hub ----------
 
 const hub = new Hub({
-  store: new Store('h1', 21, db.asClient(), now),
+  store: new Store('c1', 21, db.asClient(), now),
   files,
   pepper: async () => 'local-pepper',
   runtime: async () => ({
@@ -122,7 +122,7 @@ const hub = new Hub({
     userPoolId: 'local',
     clientId: CLIENT_ID,
     region: 'local',
-    events: { httpHost: `localhost:${PORT}`, realtimeUrl: `ws://localhost:${PORT}/event/realtime`, namespace: 'h1' },
+    events: { httpHost: `localhost:${PORT}`, realtimeUrl: `ws://localhost:${PORT}/event/realtime`, namespace: 'c1' },
   }),
   eventEndsAt: Date.parse(process.env.EVENT_ENDS_AT ?? new Date(Date.now() + 3 * 86_400_000).toISOString()),
   now,
@@ -182,9 +182,9 @@ const send = (res: http.ServerResponse, status: number, body: string | Buffer, t
   res.end(body);
 };
 
-const loginPage = (q: URLSearchParams): string => `<!doctype html><meta charset="utf-8"><title>HackathonOne local sign-in</title>
+const loginPage = (q: URLSearchParams): string => `<!doctype html><meta charset="utf-8"><title>CollabOne local sign-in</title>
 <style>body{font:15px system-ui;max-width:420px;margin:12vh auto;padding:0 16px}input,button{font:inherit;padding:8px;width:100%;box-sizing:border-box;margin:6px 0}</style>
-<h1>Local sign-in</h1><p>This is the local test hub. Any email signs in; there is no password.</p>
+<c1>Local sign-in</c1><p>This is the local test hub. Any email signs in; there is no password.</p>
 <form method="post" action="/_cognito/login">
 ${[...q.entries()].map(([k, v]) => `<input type="hidden" name="${k.replace(/"/g, '')}" value="${v.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">`).join('')}
 <label>Email <input name="email" type="email" required autofocus value="${(q.get('login_hint') ?? '').replace(/"/g, '')}"></label>
@@ -278,7 +278,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, JSON.stringify({
         apiBase: `${BASE}${API_PREFIX}`,
         cognito: { domain: `${BASE}/_cognito`, clientId: CLIENT_ID, redirectUri: `${BASE}/`, logoutUri: `${BASE}/` },
-        events: { httpHost: `localhost:${PORT}`, realtimeUrl: `ws://localhost:${PORT}/event/realtime`, namespace: 'h1' },
+        events: { httpHost: `localhost:${PORT}`, realtimeUrl: `ws://localhost:${PORT}/event/realtime`, namespace: 'c1' },
       }));
 
     const file = path.join(BOARD_DIR, p === '/' ? 'index.html' : path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
@@ -309,7 +309,7 @@ const headerFromProtocols = (protocols: string[]): Record<string, string> => {
 
 const authorizeWs = async (token: string | undefined, operation: EventsAuthorizerEvent['requestContext']['operation'], channel?: string): Promise<Identity | undefined> => {
   const identity = await resolveIdentity(token, deps);
-  const ev: EventsAuthorizerEvent = { authorizationToken: token ?? '', requestContext: { apiId: 'local', accountId: '0', requestId: randomUUID(), operation, channel: channel ?? null, channelNamespaceName: 'h1' } };
+  const ev: EventsAuthorizerEvent = { authorizationToken: token ?? '', requestContext: { apiId: 'local', accountId: '0', requestId: randomUUID(), operation, channel: channel ?? null, channelNamespaceName: 'c1' } };
   return eventsDecision(ev, identity).isAuthorized ? identity : undefined;
 };
 
@@ -368,7 +368,7 @@ wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
 setInterval(() => void hub.sweep().catch((e) => console.error('sweep failed', e)), SWEEP_MS).unref();
 
 server.listen(PORT, HOST, () => {
-  console.log(`HackathonOne local hub on ${BASE}`);
+  console.log(`CollabOne local hub on ${BASE}`);
   console.log(`  board:    ${BASE}/            (local sign-in: any email)`);
   console.log(`  api:      ${BASE}${API_PREFIX}`);
   console.log(`  realtime: ws://localhost:${PORT}/event/realtime`);

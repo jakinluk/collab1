@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Invite people to the HackathonOne board (Cognito, invite-only, MFA required).
+# Invite people to the CollabOne board (Cognito, invite-only, MFA required).
 # Usage: scripts/invite.sh ania@example.com bob@example.com ...
 set -euo pipefail
-STACK="${H1_STACK:-HackathonOne}"
+STACK="${C1_STACK:-CollabOne}"
 REGION="${AWS_REGION:-us-east-1}"
 [ $# -gt 0 ] || { echo "usage: $0 email [email...]" >&2; exit 1; }
 POOL=$(aws cloudformation describe-stacks --region "$REGION" --stack-name "$STACK" \

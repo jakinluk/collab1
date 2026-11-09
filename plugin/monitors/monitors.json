@@ -1,7 +1,7 @@
 [
   {
-    "name": "h1-relay",
-    "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/h1 watch",
-    "description": "HackathonOne events: ready tickets, votes, blockers, shared skills, goal and rule changes"
+    "name": "c1-relay",
+    "command": "\"${CLAUDE_PLUGIN_ROOT}\"/bin/c1 watch",
+    "description": "CollabOne events: ready tickets, votes, blockers, shared skills, goal and rule changes"
   }
 ]
