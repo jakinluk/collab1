@@ -9,8 +9,12 @@ export class SkillFiles {
     private readonly s3: S3Client = new S3Client({}),
   ) {}
 
-  uploadUrl(key: string): Promise<string> {
-    return getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: 'application/gzip' }), { expiresIn: 300 });
+  /** A PUT that S3 accepts only with exactly `bytes` bytes of `application/gzip`: both headers are signed. */
+  uploadUrl(key: string, bytes: number): Promise<string> {
+    return getSignedUrl(this.s3, new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: 'application/gzip', ContentLength: bytes }), {
+      expiresIn: 300,
+      signableHeaders: new Set(['content-type', 'content-length']),
+    });
   }
 
   downloadUrl(key: string): Promise<string> {

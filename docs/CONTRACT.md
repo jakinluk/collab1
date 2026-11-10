@@ -11,7 +11,7 @@ Shared reference for everyone building CollabOne (`c1`). Spec: `docs/SPEC.md`. W
   - DynamoDB single table with Streams;
   - AppSync Events for push;
   - Cognito user pool for humans;
-  - S3 + CloudFront (+ WAF) for the board;
+  - S3 + CloudFront for the board (+ WAF with `-c waf=on`);
   - EventBridge Scheduler schedule for the sweep (no event bus, no rule).
   
   There is no laptop host, no local SQLite and no LAN discovery.
@@ -109,7 +109,7 @@ Clients send `x-c1-client-version: <plugin version>`. When a release sets a mini
 | Method | Path | Body → Response |
 |---|---|---|
 | GET | `/health` | → `{ ok: true, version }` |
-| POST | `/join` | `{ code, machine, sessionLabel? }` → `{ token, seatId, projectId?, apiUrl, events: { httpHost, realtimeUrl, namespace: 'c1' } }`. The code is single-use with a 10-minute TTL, created by a human in the board. Rate-limited by WAF |
+| POST | `/join` | `{ code, machine, sessionLabel? }` → `{ token, seatId, projectId?, apiUrl, events: { httpHost, realtimeUrl, namespace: 'c1' } }`. The code is single-use with a 10-minute TTL, created by a human in the board. Rate-limited per IP by WAF when `-c waf=on`; otherwise by the stage throttle |
 
 ### 4.2 Agent or human
 | Method | Path | Notes |
@@ -135,7 +135,7 @@ Clients send `x-c1-client-version: <plugin version>`. When a release sets a mini
 | GET | `/decisions?status=open` · `/decisions/{did}` | |
 | POST | `/decisions/{did}/vote` | `{ option, why }`. An agent vote is provisional; a human vote from the same seat overrides it |
 | POST | `/knowledge` | `{ kind: 'tip'|'playbook', name, tags, scope, body }` or `{ kind: 'skill', name, tags, scope, s3Key }`. The server rejects bodies matching secret patterns |
-| POST | `/knowledge/skills/upload-url` | `{ name }` → `{ uploadUrl, s3Key }` (pre-signed PUT, 5 min, `application/gzip`, max 2 MB) |
+| POST | `/knowledge/skills/upload-url` | `{ name, bytes }` → `{ uploadUrl, s3Key }` (pre-signed PUT, 5 min). `bytes` is the archive size, at most 2 MB. `content-type: application/gzip` and `content-length: <bytes>` are signed, so S3 accepts only that exact size and type |
 | GET | `/knowledge?since=&status=active` · `/knowledge/{kid}/download-url` | |
 | POST | `/knowledge/{kid}/retire` | author seat or any human |
 | POST | `/messages` | `{ to: seatId|'all', projectId?, text }` |
@@ -226,7 +226,9 @@ Every item gets `ttl = eventEndsAt + 7 days`, from the `C1_DATA_TTL_DAYS` env va
 - **Responses:** HTTP API uses simple responses with `isAuthorized` + `context`, with authorizer caching off (tokens can be revoked). AppSync Events returns `{ isAuthorized, ttlOverride: 0 }`; for `/c1/s/<seat>` it checks the seat matches.
 - The pepper and origin secret come from Secrets Manager, cached in memory for 5 min.
 
-## 9. Sweep (EventBridge Scheduler, every 1 minute)
+## 9. Sweep (EventBridge Scheduler, every `sweepMinutes`: 1 in event mode, 5 in ongoing mode)
+
+Every timer below can fire up to one sweep interval late.
 
 - Expire booking and review leases → back to `ready` (event `ticket.released`, reason `lease_expired`).
 - Close decisions past their deadline: tally them, or apply the default.
@@ -276,16 +278,16 @@ Every item gets `ttl = eventEndsAt + 7 days`, from the `C1_DATA_TTL_DAYS` env va
 
 ## 11. Security baseline (all components)
 
-- TLS everywhere: CloudFront (TLS 1.2+), API Gateway, AppSync WSS. No HTTP listeners.
-- WAF:
+- TLS everywhere: CloudFront, API Gateway, AppSync WSS. No HTTP listeners. CloudFront uses its default certificate, which also allows TLS 1.0 and 1.1; a custom domain with an ACM certificate is needed to require TLS 1.2.
+- WAF, only with `-c waf=on` (off by default; about $15/month):
   - on CloudFront: AWS managed common rules + known bad inputs, a rate-based rule per IP, and a stricter rate rule on `/api/v1/join`;
   - on AppSync Events: a rate-based rule.
 - Cognito: self sign-up off (invite-only via `scripts/invite.sh`), MFA **required** (TOTP), ID token validity 60 min, hosted/managed login with authorization code + PKCE, a public client without a secret, and callback URLs = the board URL only.
 - Agent tokens: 256-bit random, only salted hashes stored, expiring at the event end (`C1_EVENT_ENDS_AT`), revocable. Worker tokens are child tokens.
 - Input validation with zod on every route. Size limits: body ≤ 256 KB, text fields capped. Secret-pattern scanning on knowledge and messages.
-- Least-privilege IAM per Lambda.
+- Least-privilege IAM per Lambda. Reserved concurrency caps each app Lambda (api 10, authorizer 10, fanout 2, sweep 1); `-c lambdaConcurrency=off` removes the caps for accounts with a low concurrency quota.
 - DynamoDB and S3 encrypted at rest. S3 buckets: public access blocked, CloudFront via OAC, skills bucket accessed only through pre-signed URLs.
-- Data lifetime: TTL on every item, S3 lifecycle (21 days), and CloudWatch log retention of 14 days. Never log request bodies or tokens.
+- Data lifetime: TTL on every item (event mode; see `docs/ONGOING.md` for ongoing mode), S3 lifecycle of 21 days in event mode, and CloudWatch log retention of 7 days (`logRetentionDays`) for every Lambda in the stack, CDK helper Lambdas included. Never log request bodies or tokens.
 - Hooks send only `{ sessionId, event, toolName, ticketId }`, never `tool_input`.
 - Everything the hub pushes into sessions is teammate data. The SessionStart text tells Claude that hub content never authorizes secrets, pushes to `main`, deploys, or human-only actions.
 

@@ -19,7 +19,7 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (renamed fr
   - a DynamoDB single table;
   - AppSync Events for push;
   - Cognito for human logins;
-  - S3 + CloudFront + WAF for the board.
+  - S3 + CloudFront for the board, with optional WAF (`-c waf=on`).
 
   There is no laptop host and no local storage. Everyone only needs internet, which Claude Code needs anyway.
 - **Each participant's Claude Code** gets a bundled `c1` CLI for **pull** (book tickets, raise blockers, vote, share skills). A plugin **monitor** (`c1 watch`) gives **push**: it subscribes to AppSync Events and prints one-line events, which reach Claude as notifications.
@@ -47,7 +47,7 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (renamed fr
 | D11 | Build before the offsite | **The full version, built as a warm-up mini-hackathon** | §14 |
 | D12 | Command names | **Short: `/c1:…`** | §8 |
 | D13 | Projects | **Several projects on one hub; each person pinned to one project.** Pinning limits what autopilot books, not what anyone can see or decide | §4.1 |
-| D14 | Hosting | **Cloud only, serverless:** Lambda + DynamoDB + AppSync Events + Cognito + CloudFront/WAF in the AWS sandbox account. No local storage. "It must be as safe" as the LAN design: see §2.3 | §2 |
+| D14 | Hosting | **Cloud only, serverless:** Lambda + DynamoDB + AppSync Events + Cognito + CloudFront (WAF optional) in the AWS sandbox account. No local storage. "It must be as safe" as the LAN design: see §2.3 | §2 |
 
 ---
 
@@ -71,7 +71,7 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (renamed fr
 
 ```
 ┌──────────────────── AWS sandbox account · CDK stack "c1" ─────────────────────┐
-│  CloudFront + WAF ─┬─ /            → S3 board (static SPA, OAC)               │
+│  CloudFront (+WAF) ┬─ /            → S3 board (static SPA, OAC)               │
 │                    └─ /api/v1/*    → API Gateway HTTP API (origin-verify hdr) │
 │                                         │  Lambda authorizer: agent token |   │
 │                                         │  Cognito ID token (human)           │
@@ -83,7 +83,7 @@ Status: design spec, first written 2026-11-04 and revised 2026-11-09 (renamed fr
 │                                         │ stream (PK = EVENT)                 │
 │                                         ▼                                     │
 │                   Lambda "fanout" ── SigV4 publish ──► AppSync Events "c1"     │
-│  Scheduler (1 min) → Lambda "sweep": leases, deadlines, contest windows       │
+│  Scheduler (1 or 5 min) → Lambda "sweep": leases, deadlines, contest windows  │
 │  Cognito user pool (invite-only, MFA) · Secrets Manager · S3 skills bucket    │
 └───────────────────────────────────────────────────────────────────────────────┘
         ▲ HTTPS: commands                         ▲ WSS: subscribe /c1/...
@@ -123,14 +123,14 @@ The LAN design got part of its safety from being unreachable from the internet. 
 
 | Threat | Controls |
 |---|---|
-| Someone outside the team reaches the hub | Every data route needs a credential. Only `/health` and `/join` are public: `/join` takes a single-use code with a 10-minute TTL, created by a logged-in human, and is tightly rate-limited by WAF. The board shell holds no data. CloudFront WAF uses AWS managed rule groups plus per-IP rate limits, and the Event API has its own rate rule. API Gateway rejects requests that didn't come through CloudFront (secret origin-verify header) |
+| Someone outside the team reaches the hub | Every data route needs a credential. Only `/health` and `/join` are public: `/join` takes a single-use code with a 10-minute TTL, created by a logged-in human, and is rate-limited by the API stage throttle; a code is one of about 10^12 values, so it cannot be guessed in 10 minutes. The board shell holds no data. With `-c waf=on`, CloudFront WAF adds AWS managed rule groups plus per-IP rate limits, and the Event API gets its own rate rule. API Gateway rejects requests that didn't come through CloudFront (secret origin-verify header) |
 | Stolen human login | Cognito is invite-only (self sign-up off) with **MFA required** (TOTP). Login is authorization code + PKCE with a public client, and callbacks only go to the board URL. ID tokens last 60 min and are kept in session storage only |
 | Stolen agent token | 256-bit random token, stored in the macOS Keychain. The hub stores only a salted hash. Tokens expire at the event end and can be revoked on the board. Factory workers get child tokens, each revocable on its own |
 | Claude acting as a human | Agent tokens can't call human-only routes. Claude can only create a **proposal**; a human approves it in the board with their Cognito session |
 | Injection through the push path | Clients can't publish to AppSync channels (IAM-only publish). Every write is validated (zod, size limits). Monitor lines are labelled as teammate data, and the SessionStart text tells Claude that hub content never authorizes secrets, pushes to `main`, deploys or human-only actions |
 | Secrets leaking into shared content | Secret-pattern scanning on tips, playbooks, skills and messages, both in the CLI before upload and on the server. Hooks send only session, event, tool name and ticket id, never `tool_input` |
-| Eavesdropping | TLS everywhere: CloudFront (TLS 1.2+), API Gateway and AppSync WSS. No HTTP listeners |
-| Data lingering after the event | DynamoDB TTL on every item, a 21-day S3 lifecycle, 14-day log retention, and no request bodies or tokens in logs. `/c1:wrap` revokes all tokens and can destroy the stack |
+| Eavesdropping | TLS everywhere: CloudFront, API Gateway and AppSync WSS. No HTTP listeners. CloudFront uses its default certificate, which also allows TLS 1.0 and 1.1; a custom domain with an ACM certificate is needed to require TLS 1.2 |
+| Data lingering after the event | DynamoDB TTL on every item, a 21-day S3 lifecycle, 7-day log retention, and no request bodies or tokens in logs. `/c1:wrap` revokes all tokens and can destroy the stack |
 | Over-privileged infrastructure | One Lambda per role with least-privilege IAM, in the sandbox account only, never production. No VPC, so nothing to misconfigure in one |
 | Accountability | The event log records who did what, and whether it was an agent or a human |
 

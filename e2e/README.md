@@ -21,4 +21,4 @@ Cognito-style sign-in with PKCE, seat creation, a proposal arriving live and bei
 
 ## What only a real deploy can check
 
-The local hub replaces AWS, so these still need the dry run in `docs/SPEC.md` §14: IAM and SigV4 publishing to AppSync Events, the Lambda authorizer wiring in API Gateway and AppSync, Cognito managed login with MFA, CloudFront + WAF and the origin-verify header, DynamoDB Streams ordering and retries, the EventBridge Scheduler invoke, and S3 presigned URLs. Claude Code itself is not driven here either: whether a monitor notification wakes an idle session is still open.
+The local hub replaces AWS, so these still need the dry run in `docs/SPEC.md` §14: IAM and SigV4 publishing to AppSync Events, the Lambda authorizer wiring in API Gateway and AppSync, Cognito managed login with MFA, CloudFront, the optional WAF and the origin-verify header, DynamoDB Streams ordering and retries, the EventBridge Scheduler invoke, and S3 presigned URLs. Claude Code itself is not driven here either: whether a monitor notification wakes an idle session is still open.

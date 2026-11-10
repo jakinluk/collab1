@@ -56,7 +56,7 @@ Several ingests in a row fold into the epic's open re-plan while nobody has asse
    cd backend && npx cdk deploy -c mode=ongoing -c domainPrefix=<unique-prefix>
    # locally: npx tsx scripts/local-hub.ts --mode ongoing
    ```
-   Options: `-c tokenTtlDays=30 -c eventRetentionDays=90 -c logRetentionDays=90`.
+   Options: `-c tokenTtlDays=30 -c eventRetentionDays=90 -c logRetentionDays=7 -c sweepMinutes=5`.
 2. Sign in to the board, create your seat, connect your Mac (`/c1:join`).
 3. Ask your agent: "add our app repo to the CollabOne catalog" (`c1 catalog propose`, which you approve on the board), then "create an epic for X on it" (`c1 epic propose-new`).
 4. Bring the PRD in: `/c1:ingest prd.md for <epic>`. It opens CR1 with a re-plan ticket. `/c1:assess CR1` turns the PRD into the first goal and tickets.

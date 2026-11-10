@@ -34,16 +34,17 @@ The earlier design ran the hub on a laptop inside the venue LAN, so part of its 
 - Setup skills are `disable-model-invocation: true`, but the guarantee doesn't rely on that: the server enforces it.
 
 ### Edge and transport
-- **CloudFront:** TLS 1.2+, and HTTPS only (HTTP redirects).
-- **WAF on CloudFront:** AWS managed common rules and known-bad-inputs, a per-IP rate rule, and a strict rate rule on `/api/v1/join`. The board and API share one origin, so CORS is never needed.
+- **CloudFront:** HTTPS only (HTTP redirects). CloudFront uses its default certificate, which also allows TLS 1.0 and 1.1; a custom domain with an ACM certificate is needed to require TLS 1.2.
+- **WAF on CloudFront (optional, `-c waf=on`, about $15/month with the AppSync one):** AWS managed common rules and known-bad-inputs, a per-IP rate rule, and a strict rate rule on `/api/v1/join`. Off by default. Without it there are no per-IP limits; the API stage throttle (100 req/s, burst 200) and the Lambda concurrency limits cap the load, and a join code (one of about 10^12 values, 10 minutes, single use) cannot be guessed at that rate.
+- The board and API share one origin, so CORS is never needed.
 - **API Gateway** checks a secret `x-c1-origin-verify` header that only CloudFront adds, so the raw execute-api URL is useless.
-- **AppSync Events:** WSS only, publish IAM-only, subscribe through the Lambda authorizer, and a WAF rate rule where supported.
+- **AppSync Events:** WSS only, publish IAM-only, subscribe through the Lambda authorizer, and a WAF rate rule with `-c waf=on`.
 
 ### Input and content
 - zod schemas on every route; request body ≤ 256 KB; text fields capped; ids restricted to `[a-z0-9-]`.
 - Secret-pattern scanning on tips, playbooks, shared skills and messages, client-side before upload and server-side before storing. Patterns cover AWS keys, GitHub tokens, Anthropic keys, private key blocks and generic credential assignments.
 - **Shared skills:**
-  - uploaded through pre-signed S3 PUT URLs (5 minutes, ≤ 2 MB, `application/gzip`);
+  - uploaded through pre-signed S3 PUT URLs (5 minutes). The client states the size first (≤ 2 MB); the URL signs that `content-length` and `application/gzip`, so S3 refuses any other size or type;
   - downloaded through pre-signed GETs;
   - the CLI rejects archives containing absolute paths or `..`, and extracts only under `~/.claude/skills/c1--<name>/`.
 - Hooks send only `{ sessionId, event, toolName, ticketId }`, never tool inputs or file contents.
@@ -51,10 +52,13 @@ The earlier design ran the hub on a laptop inside the venue LAN, so part of its 
 
 ### Infrastructure
 - One Lambda per role (api, authorizer, fanout, sweep), each with least-privilege IAM.
+- Reserved concurrency caps each one (api 10, authorizer 10, fanout 2, sweep 1), so a flood of requests cannot scale them without limit. `-c lambdaConcurrency=off` removes the caps for accounts whose concurrency quota is too low.
+- No call loops: API and sweep write the table, the stream feeds only the fan-out Lambda, and the fan-out Lambda only publishes to AppSync. The sweep runs every 1 minute in event mode and every 5 minutes in ongoing mode (`sweepMinutes`).
+- The stack creates no CloudTrail trail and no CloudFront or API Gateway access logs. AWS keeps 90 days of account activity history on its own.
 - Deployed only to a **sandbox** AWS account, never production. No VPC.
 - **DynamoDB:** encrypted at rest, point-in-time recovery on, TTL on every item.
-- **S3:** public access blocked, encryption on, board served through CloudFront OAC, lifecycle expiry at 21 days.
-- **CloudWatch Logs:** 14-day retention. Never log request bodies, tokens or JWTs.
+- **S3:** public access blocked, encryption on, HTTPS required, board served through CloudFront OAC. Skills expire after 21 days in event mode and are kept in ongoing mode.
+- **CloudWatch Logs:** 7-day retention (`logRetentionDays`) for every Lambda, CDK helper Lambdas included. Never log request bodies, tokens or JWTs.
 
 ### Data lifetime
 - Items expire 21 days after creation by default.

@@ -16,7 +16,7 @@ Work through these steps with the human. Ask before any command that deploys or 
    npx cdk deploy -c eventEndsAt=<ISO end of the event> -c domainPrefix=<globally-unique-prefix>
    scripts/smoke.sh
    ```
-   Show the human the outputs (`BoardUrl`, `ApiUrl`). The stack is fixed to us-east-1 because CloudFront WAF lives there.
+   Show the human the outputs (`BoardUrl`, `ApiUrl`). The stack is fixed to us-east-1 (set in `backend/bin/app.ts`); the optional CloudFront WAF must live there.
 3. **Invite people:** `scripts/invite.sh <email> <email> …`. Each person gets a temporary password by email.
 4. **Open the board** (`BoardUrl`), sign in, set a password and an authenticator app (MFA is mandatory), and create the seat.
 5. **Connect this Mac:** run `/c1:join`.

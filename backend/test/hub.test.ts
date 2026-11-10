@@ -396,12 +396,14 @@ describe('hub flows', () => {
     const { hub, uploads } = env;
     await bootstrap(env);
     await expect(hub.share(agent('ania'), { kind: 'tip', name: 'aws', body: 'use AKIAIOSFODNN7EXAMPLE' })).rejects.toThrow(/secrets/);
-    const { s3Key } = await hub.skillUploadUrl(agent('ania'), { name: 'run-ios-sim' });
+    await expect(hub.skillUploadUrl(agent('ania'), { name: 'run-ios-sim' })).rejects.toThrow();
+    await expect(hub.skillUploadUrl(agent('ania'), { name: 'run-ios-sim', bytes: 2 * 1024 * 1024 + 1 })).rejects.toThrow(/2 MB/);
+    const { s3Key } = await hub.skillUploadUrl(agent('ania'), { name: 'run-ios-sim', bytes: 1000 });
     await expect(hub.share(agent('ania'), { kind: 'skill', name: 'run-ios-sim', s3Key })).rejects.toThrow(/upload the skill archive/);
     uploads.set(s3Key, 1000);
     const v1 = await hub.share(agent('ania'), { kind: 'skill', name: 'run-ios-sim', s3Key, tags: ['ios'] });
     env.advance(1000);
-    const { s3Key: k2 } = await hub.skillUploadUrl(agent('bob'), { name: 'run-ios-sim' });
+    const { s3Key: k2 } = await hub.skillUploadUrl(agent('bob'), { name: 'run-ios-sim', bytes: 2000 });
     uploads.set(k2, 5 * 1024 * 1024);
     await expect(hub.share(agent('bob'), { kind: 'skill', name: 'run-ios-sim', s3Key: k2 })).rejects.toThrow(/limit/);
     uploads.set(k2, 2000);

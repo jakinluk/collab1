@@ -8,10 +8,10 @@ This is the serverless hub behind the CollabOne board, CLI and Claude Code plugi
 | Auth | One Lambda authorizer (`src/handlers/authorizer.ts`), shared by the HTTP API and AppSync Events. It accepts agent tokens (`c1a_…`) and Cognito ID tokens (humans) |
 | State + event log | DynamoDB single table `PK/SK + GSI1`, with Streams, TTL and PITR |
 | Push | DynamoDB Stream → fan-out Lambda → AppSync Events namespace `c1`. Channels: `/c1/all`, `/c1/p/<project>`, `/c1/s/<seat>` |
-| Housekeeping | EventBridge Scheduler schedule (rate 1 minute, no event bus) → sweep Lambda. It expires leases, closes votes, finalizes contest windows and expires proposals |
+| Housekeeping | EventBridge Scheduler schedule (every `sweepMinutes`: 1 in event mode, 5 in ongoing mode; no event bus) → sweep Lambda. It expires leases, closes votes, finalizes contest windows and expires proposals |
 | Humans | Cognito user pool: invite-only, **TOTP MFA required**, hosted login with code + PKCE |
-| Board | S3 (private, OAC) + CloudFront + security headers + WAF. `config.json` is generated at deploy |
-| Shared skills | Private S3 bucket. Uploads and downloads use 5-minute pre-signed URLs; objects expire after 21 days |
+| Board | S3 (private, OAC) + CloudFront + security headers, plus WAF with `-c waf=on`. `config.json` is generated at deploy |
+| Shared skills | Private S3 bucket. Uploads and downloads use 5-minute pre-signed URLs; the upload URL signs the exact size (≤ 2 MB). Objects expire after 21 days in event mode |
 
 The domain logic lives in `src/core/` and is pure, with no AWS imports. Use cases are in `src/app/hub.ts`. Adapters are in `src/adapters/`.
 
@@ -23,7 +23,7 @@ The domain logic lives in `src/core/` and is pure, with no AWS imports. Use case
 
 ### Why us-east-1
 
-CloudFront web ACLs (WAF scope `CLOUDFRONT`) must be created in us-east-1. The simplest robust option is to deploy the whole stack there, so the edge WAF, the regional WAF on AppSync Events and everything else live in one stack with no cross-region references. The region is fixed in `bin/app.ts`.
+CloudFront web ACLs (WAF scope `CLOUDFRONT`) must be created in us-east-1. The whole stack is deployed there, so that with `-c waf=on` the edge WAF, the regional WAF on AppSync Events and everything else live in one stack with no cross-region references. The region is fixed in `bin/app.ts`.
 
 ## Deploy
 
@@ -46,6 +46,10 @@ Context values:
 | `removalPolicy` | no (`destroy`) | `retain` keeps the table, secrets, user pool and skills bucket on `cdk destroy` |
 | `stackName` | no (`CollabOne`) | Lets you run a rehearsal stack next to the real one |
 | `version` | no | Shown by `GET /api/v1/health` and in the board footer |
+| `logRetentionDays` | no (7) | CloudWatch log retention for every Lambda, in both modes |
+| `sweepMinutes` | no (1 event, 5 ongoing) | How often the sweep runs. Timers (leases, contest windows) can fire up to this late |
+| `waf` | no (`off`) | `on` adds AWS WAF on CloudFront and AppSync Events: managed common rules, known bad inputs and per-IP rate limits. It costs about $15/month (two web ACLs at $5 plus $1 per rule) before traffic |
+| `lambdaConcurrency` | no (`on`) | Reserved concurrency caps: api 10, authorizer 10, fanout 2, sweep 1. Set `off` when the account's concurrency quota is too low to reserve (AWS keeps 100 unreserved) |
 
 The deploy prints these outputs: `BoardUrl`, `ApiUrl`, `EventsHttpHost`, `EventsRealtimeUrl`, `UserPoolId`, `ClientId`, `LoginDomain` and `TableName`. `scripts/outputs.sh` prints them again later.
 
@@ -99,10 +103,11 @@ Dev-only endpoints: `POST /_dev/token?email=` (an ID token for scripts), `POST /
 
 - **TLS only:** CloudFront redirects to HTTPS, the `/api/*` behaviour is HTTPS-only, and AppSync Events uses WSS. The CloudFront default certificate is used. Add a custom domain + ACM certificate to also pin the TLS minimum version.
 - **The API is only reachable through CloudFront.** CloudFront adds `x-c1-origin-verify` from Secrets Manager. The authorizer (via its identity source) and the API handler both reject requests without it, so the raw API Gateway URL answers 403.
-- **WAF:**
+- **WAF (only with `-c waf=on`; off by default because it costs about $15/month):**
   - On CloudFront: a stricter rate limit on `/api/v1/join` (100 per 5 minutes per IP), a general per-IP rate limit (6000 per 5 minutes), AWS Common Rule Set and Known Bad Inputs. `SizeRestrictions_BODY` is set to count, because plan uploads can exceed 8 KB.
   - On AppSync Events: a per-IP rate limit.
   - Participants at the venue usually share one public IP, so the limits are generous.
+  - Without WAF there are no per-IP limits. Access control does not change: every route except `/health` and `/join` needs a credential, a join code is one of about 10^12 values and lasts 10 minutes, and the API stage throttle (100 req/s, burst 200) and Lambda concurrency cap the load.
 - **Agent tokens:** `c1a_` + 32 random bytes. Only `sha256(pepper + token)` is stored, and the pepper is in Secrets Manager. Tokens expire at `eventEndsAt` and can be revoked from the board. Authorizer caching is off, so revocation takes effect immediately.
 - **Join codes:** single-use, 10-minute TTL, hashed with the same pepper. Only a signed-in human can create one, for their own seat.
 - **Humans:** Cognito, invite-only, TOTP MFA required, ID tokens valid for 60 minutes, verified with `aws-jwt-verify` (issuer, audience = board client, `token_use = id`).
@@ -110,13 +115,14 @@ Dev-only endpoints: `POST /_dev/token?email=` (an ID token for scripts), `POST /
   - Agent tokens get 403 on `/actions`, `/proposals/{id}/approve|reject`, `/escalations/{id}/resolve|contest`, `/join-codes` and `/tokens`.
   - Agents can only **propose** human-only changes. A human approves them in the board.
 - **Push:** clients cannot publish to AppSync Events; publishing is IAM-only and only the fan-out Lambda holds `appsync:EventPublish`. Subscribers may read `/c1/all` and `/c1/p/*`, but only **their own** `/c1/s/<seat>`. Wildcards such as `/c1/*` and `/c1/s/*` are refused, so other seats' direct messages stay private.
-- **Input:** zod validation on every route, a 256 KB body limit, and secret scanning on shared knowledge and messages. Skill archives must be at most 2 MB, are checked after upload, and can only be uploaded under the uploader's own `skills/<seat>/` prefix.
-- **Data at rest:** DynamoDB AWS-managed encryption, S3-managed encryption with `enforceSSL`, public access blocked, Lambda logs kept 14 days. Request bodies and tokens are never logged.
+- **Input:** zod validation on every route, a 256 KB body limit, and secret scanning on shared knowledge and messages. Skill archives must be at most 2 MB: S3 enforces the signed size, the hub checks it again after upload, and can only be uploaded under the uploader's own `skills/<seat>/` prefix.
+- **Data at rest:** DynamoDB AWS-managed encryption, S3-managed encryption with `enforceSSL`, public access blocked, Lambda logs kept 7 days. Request bodies and tokens are never logged.
 - **Least privilege:**
   - The authorizer only reads the table.
   - The API writes the table and only touches `skills/*` in the skills bucket.
   - The fan-out Lambda can only publish to the `c1` namespace.
   - The sweep Lambda only writes the table.
+  - Reserved concurrency caps every app Lambda (see `lambdaConcurrency`).
   - The Lambdas read their runtime configuration from one SSM parameter.
 
 ## API notes for the CLI and board builders (clarifications of `docs/CONTRACT.md`)

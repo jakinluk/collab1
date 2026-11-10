@@ -99,13 +99,14 @@ if (STATE && fs.existsSync(STATE)) for (const [k, v] of JSON.parse(fs.readFileSy
 // ---------- S3 stand-in ----------
 
 const objects = new Map<string, Buffer>();
-const fileSig = (key: string, op: string, exp: number): string => createHmac('sha256', DEV_SECRET).update(`${op}|${key}|${exp}`).digest('hex').slice(0, 32);
-const fileUrl = (key: string, op: 'put' | 'get'): string => {
+const fileSig = (key: string, op: string, exp: number, bytes: string): string => createHmac('sha256', DEV_SECRET).update(`${op}|${key}|${exp}|${bytes}`).digest('hex').slice(0, 32);
+const fileUrl = (key: string, op: 'put' | 'get', bytes = ''): string => {
   const exp = now() + 300_000;
-  return `${BASE}/_files/${encodeURIComponent(key)}?op=${op}&exp=${exp}&sig=${fileSig(key, op, exp)}`;
+  return `${BASE}/_files/${encodeURIComponent(key)}?op=${op}&exp=${exp}&bytes=${bytes}&sig=${fileSig(key, op, exp, bytes)}`;
 };
 const files = {
-  uploadUrl: async (key: string) => fileUrl(key, 'put'),
+  // Like S3 with a signed content-length: the PUT must carry exactly `bytes` bytes.
+  uploadUrl: async (key: string, bytes: number) => fileUrl(key, 'put', String(bytes)),
   downloadUrl: async (key: string) => fileUrl(key, 'get'),
   inspect: async (key: string) => ({ exists: objects.has(key), bytes: objects.get(key)?.length ?? 0, contentType: 'application/gzip' }),
   remove: async (key: string) => void objects.delete(key),
@@ -222,9 +223,12 @@ const server = http.createServer(async (req, res) => {
       const key = decodeURIComponent(p.slice('/_files/'.length));
       const op = url.searchParams.get('op') ?? '';
       const exp = Number(url.searchParams.get('exp'));
-      if (url.searchParams.get('sig') !== fileSig(key, op, exp) || exp < now()) return send(res, 403, 'SignatureDoesNotMatch', 'text/plain');
+      const bytes = url.searchParams.get('bytes') ?? '';
+      if (url.searchParams.get('sig') !== fileSig(key, op, exp, bytes) || exp < now()) return send(res, 403, 'SignatureDoesNotMatch', 'text/plain');
       if (op === 'put' && req.method === 'PUT') {
-        objects.set(key, await readBody(req, MAX_SKILL_BYTES + 1));
+        const body = await readBody(req, MAX_SKILL_BYTES + 1);
+        if (body.length !== Number(bytes)) return send(res, 403, 'SignatureDoesNotMatch', 'text/plain');
+        objects.set(key, body);
         return send(res, 200, '', 'text/plain');
       }
       if (op === 'get' && req.method === 'GET') return objects.has(key) ? send(res, 200, objects.get(key) as Buffer, 'application/gzip') : send(res, 404, 'NoSuchKey', 'text/plain');

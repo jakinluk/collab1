@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { CfnOutput, type CfnResource, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaAuthorizer, HttpLambdaResponseType } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
@@ -28,10 +28,17 @@ export interface C1StackProps extends StackProps {
   mode: 'event' | 'ongoing';
   /** Required in event mode. */
   eventEndsAt?: string;
-  /** Ongoing mode: agent token lifetime, event-log retention and Lambda log retention. */
+  /** Ongoing mode: agent token lifetime and event-log retention. */
   tokenTtlDays: number;
   eventRetentionDays: number;
+  /** CloudWatch log retention for every Lambda in the stack, both modes. */
   logRetentionDays: number;
+  /** How often the sweep runs, in minutes. */
+  sweepMinutes: number;
+  /** Add AWS WAF on CloudFront and AppSync Events (about $15/month: two web ACLs at $5 plus $1 per rule). */
+  waf: boolean;
+  /** Cap each app Lambda with reserved concurrency. Off for accounts whose concurrency quota is below 100+caps. */
+  lambdaConcurrency: boolean;
   domainPrefix: string;
   dataTtlDays: number;
   removalPolicy: RemovalPolicy;
@@ -128,7 +135,9 @@ export class C1Stack extends Stack {
     });
     const loginDomain = userPool.addDomain('Login', { cognitoDomain: { domainPrefix: props.domainPrefix } });
 
-    const fnDefaults = (name: string, entry: string, timeout: number, memory = 512, env?: Record<string, string>): nodejs.NodejsFunctionProps => ({
+    const logGroup = (id: string): logs.LogGroup =>
+      new logs.LogGroup(this, id, { retention: props.logRetentionDays as logs.RetentionDays, removalPolicy: RemovalPolicy.DESTROY });
+    const fnDefaults = (name: string, entry: string, timeout: number, maxConcurrency: number, memory = 512, env?: Record<string, string>): nodejs.NodejsFunctionProps => ({
       entry: path.join(__dirname, '..', 'src', 'handlers', entry),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
@@ -136,7 +145,8 @@ export class C1Stack extends Stack {
       memorySize: memory,
       timeout: Duration.seconds(timeout),
       bundling: { minify: true, sourceMap: true, target: 'node22', externalModules: [], format: nodejs.OutputFormat.CJS },
-      logGroup: new logs.LogGroup(this, `${name}Logs`, { retention: props.mode === 'event' ? logs.RetentionDays.TWO_WEEKS : (props.logRetentionDays as logs.RetentionDays), removalPolicy: RemovalPolicy.DESTROY }),
+      logGroup: logGroup(`${name}Logs`),
+      ...(props.lambdaConcurrency ? { reservedConcurrentExecutions: maxConcurrency } : {}),
       environment: env ?? {
         NODE_OPTIONS: '--enable-source-maps',
         TABLE_NAME: table.tableName,
@@ -154,13 +164,13 @@ export class C1Stack extends Stack {
     });
     const readRuntime = new iam.PolicyStatement({ actions: ['ssm:GetParameter'], resources: [runtimeParamArn] });
 
-    const authFn = new nodejs.NodejsFunction(this, 'Authorizer', fnDefaults('Authorizer', 'authorizer.ts', 10, 256));
+    const authFn = new nodejs.NodejsFunction(this, 'Authorizer', fnDefaults('Authorizer', 'authorizer.ts', 10, 10, 256));
     table.grantReadData(authFn);
     pepper.grantRead(authFn);
     originVerify.grantRead(authFn);
     authFn.addToRolePolicy(readRuntime);
 
-    const apiFn = new nodejs.NodejsFunction(this, 'Api', fnDefaults('Api', 'api.ts', 20));
+    const apiFn = new nodejs.NodejsFunction(this, 'Api', fnDefaults('Api', 'api.ts', 20, 10));
     apiFn.addEnvironment('SKILLS_BUCKET', skillsBucket.bucketName);
     table.grantReadWriteData(apiFn);
     pepper.grantRead(apiFn);
@@ -170,13 +180,13 @@ export class C1Stack extends Stack {
     skillsBucket.grantRead(apiFn, 'skills/*');
     skillsBucket.grantDelete(apiFn, 'skills/*');
 
-    const sweepFn = new nodejs.NodejsFunction(this, 'Sweep', fnDefaults('Sweep', 'sweep.ts', 55));
+    const sweepFn = new nodejs.NodejsFunction(this, 'Sweep', fnDefaults('Sweep', 'sweep.ts', 55, 1));
     table.grantReadWriteData(sweepFn);
     pepper.grantRead(sweepFn);
     sweepFn.addToRolePolicy(readRuntime);
     new scheduler.Schedule(this, 'SweepSchedule', {
       description: 'CollabOne sweep: leases, deadlines, contest windows',
-      schedule: scheduler.ScheduleExpression.rate(Duration.minutes(1)),
+      schedule: scheduler.ScheduleExpression.rate(Duration.minutes(props.sweepMinutes)),
       target: new schedulerTargets.LambdaInvoke(sweepFn, { retryAttempts: 0, maxEventAge: Duration.minutes(1) }),
     });
 
@@ -215,7 +225,7 @@ export class C1Stack extends Stack {
     const fanoutFn = new nodejs.NodejsFunction(
       this,
       'Fanout',
-      fnDefaults('Fanout', 'fanout.ts', 30, 256, { NODE_OPTIONS: '--enable-source-maps', EVENTS_HTTP_HOST: eventApi.httpDns, C1_VERSION: props.version }),
+      fnDefaults('Fanout', 'fanout.ts', 30, 2, 256, { NODE_OPTIONS: '--enable-source-maps', EVENTS_HTTP_HOST: eventApi.httpDns, C1_VERSION: props.version }),
     );
     namespace.grantPublish(fanoutFn);
     fanoutFn.addEventSource(
@@ -229,27 +239,31 @@ export class C1Stack extends Stack {
       }),
     );
 
-    const eventsAcl = new wafv2.CfnWebACL(this, 'EventsAcl', {
-      scope: 'REGIONAL',
-      defaultAction: { allow: {} },
-      visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'c1-events', sampledRequestsEnabled: true },
-      rules: [rateRule('c1-events-rate', 0, 3000)],
-    });
-    new wafv2.CfnWebACLAssociation(this, 'EventsAclAssociation', { resourceArn: eventApi.apiArn, webAclArn: eventsAcl.attrArn });
-
-    const edgeAcl = new wafv2.CfnWebACL(this, 'EdgeAcl', {
-      scope: 'CLOUDFRONT',
-      defaultAction: { allow: {} },
-      visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'c1-edge', sampledRequestsEnabled: true },
-      rules: [
-        rateRule('c1-join-rate', 0, 100, {
-          byteMatchStatement: { fieldToMatch: { uriPath: {} }, positionalConstraint: 'STARTS_WITH', searchString: '/api/v1/join', textTransformations: [{ priority: 0, type: 'NONE' }] },
-        }),
-        rateRule('c1-rate', 1, 6000),
-        managedRule('AWSManagedRulesCommonRuleSet', 2, ['SizeRestrictions_BODY']),
-        managedRule('AWSManagedRulesKnownBadInputsRuleSet', 3),
-      ],
-    });
+    // Optional (-c waf=on). Without it, access control is unchanged: login on every route but /health and /join,
+    // single-use join codes, the stage throttle and the Lambda concurrency limits.
+    let edgeAcl: wafv2.CfnWebACL | undefined;
+    if (props.waf) {
+      const eventsAcl = new wafv2.CfnWebACL(this, 'EventsAcl', {
+        scope: 'REGIONAL',
+        defaultAction: { allow: {} },
+        visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'c1-events', sampledRequestsEnabled: true },
+        rules: [rateRule('c1-events-rate', 0, 3000)],
+      });
+      new wafv2.CfnWebACLAssociation(this, 'EventsAclAssociation', { resourceArn: eventApi.apiArn, webAclArn: eventsAcl.attrArn });
+      edgeAcl = new wafv2.CfnWebACL(this, 'EdgeAcl', {
+        scope: 'CLOUDFRONT',
+        defaultAction: { allow: {} },
+        visibilityConfig: { cloudWatchMetricsEnabled: true, metricName: 'c1-edge', sampledRequestsEnabled: true },
+        rules: [
+          rateRule('c1-join-rate', 0, 100, {
+            byteMatchStatement: { fieldToMatch: { uriPath: {} }, positionalConstraint: 'STARTS_WITH', searchString: '/api/v1/join', textTransformations: [{ priority: 0, type: 'NONE' }] },
+          }),
+          rateRule('c1-rate', 1, 6000),
+          managedRule('AWSManagedRulesCommonRuleSet', 2, ['SizeRestrictions_BODY']),
+          managedRule('AWSManagedRulesKnownBadInputsRuleSet', 3),
+        ],
+      });
+    }
 
     const headers = new cloudfront.ResponseHeadersPolicy(this, 'BoardHeaders', {
       securityHeadersBehavior: {
@@ -281,7 +295,7 @@ export class C1Stack extends Stack {
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       comment: 'CollabOne board and API',
       defaultRootObject: 'index.html',
-      webAclId: edgeAcl.attrArn,
+      webAclId: edgeAcl?.attrArn,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       defaultBehavior: {
@@ -352,7 +366,12 @@ export class C1Stack extends Stack {
       distributionPaths: ['/*'],
       prune: true,
       memoryLimit: 512,
+      logGroup: logGroup('DeployBoardLogs'),
     });
+
+    // The bucket auto-delete helper is a CDK singleton without a log group prop; point it at one with our retention.
+    const autoDelete = this.node.tryFindChild('Custom::S3AutoDeleteObjectsCustomResourceProvider')?.node.tryFindChild('Handler') as CfnResource | undefined;
+    autoDelete?.addPropertyOverride('LoggingConfig', { LogGroup: logGroup('AutoDeleteLogs').logGroupName });
 
     new CfnOutput(this, 'BoardUrl', { value: `${boardUrl}/` });
     new CfnOutput(this, 'ApiUrl', { value: `${boardUrl}/api/v1` });

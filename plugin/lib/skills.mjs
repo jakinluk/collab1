@@ -138,8 +138,9 @@ export function packSkill(dir) {
 export async function shareSkill(api, dir, { name, tags = [], scope = 'global', fetchImpl = globalThis.fetch }) {
   const archive = packSkill(dir);
   try {
-    const { uploadUrl, s3Key } = await api.post('/knowledge/skills/upload-url', { name });
-    const res = await fetchImpl(uploadUrl, { method: 'PUT', headers: { 'content-type': 'application/gzip' }, body: fs.readFileSync(archive) });
+    const body = fs.readFileSync(archive);
+    const { uploadUrl, s3Key } = await api.post('/knowledge/skills/upload-url', { name, bytes: body.length });
+    const res = await fetchImpl(uploadUrl, { method: 'PUT', headers: { 'content-type': 'application/gzip' }, body });
     if (!res.ok) throw new Error(`upload failed with HTTP ${res.status}`);
     return await api.post('/knowledge', { kind: 'skill', name, tags, scope, s3Key });
   } finally {

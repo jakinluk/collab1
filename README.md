@@ -16,7 +16,7 @@ In hackathon mode:
 ```
 .claude-plugin/marketplace.json   marketplace "collabone" → ./plugin
 plugin/                           the Claude Code plugin: skills, hooks, monitor, the `c1` CLI
-backend/                          AWS CDK stack + Lambdas (TypeScript): API, DynamoDB, AppSync Events, Cognito, CloudFront + WAF
+backend/                          AWS CDK stack + Lambdas (TypeScript): API, DynamoDB, AppSync Events, Cognito, CloudFront (+ optional WAF)
 board/                            the board web app (static; open board/index.html?demo to see it with sample data)
 e2e/                              end-to-end runs of the real CLI and the real board against a local hub
 docs/                             SPEC.md (design), ONGOING.md (ongoing mode), CONTRACT.md (API/CLI contract), SECURITY.md, DEPLOY.md

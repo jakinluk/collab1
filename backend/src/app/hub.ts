@@ -1064,9 +1064,12 @@ export class Hub {
   }
 
   async skillUploadUrl(actor: Actor, body: unknown): Promise<{ uploadUrl: string; s3Key: string }> {
-    const { name } = z.object({ name: z.string().regex(/^[a-z0-9][a-z0-9-]{1,60}$/) }).parse(body);
+    const { name, bytes } = parse(
+      z.object({ name: z.string().regex(/^[a-z0-9][a-z0-9-]{1,60}$/), bytes: z.number().int().positive().max(MAX_SKILL_BYTES, 'skill archive is larger than 2 MB') }),
+      body,
+    );
     const s3Key = `skills/${actor.seatId}/${name}/${this.now()}.tgz`;
-    return { uploadUrl: await this.files.uploadUrl(s3Key), s3Key };
+    return { uploadUrl: await this.files.uploadUrl(s3Key, bytes), s3Key };
   }
 
   async skillDownloadUrl(id: string): Promise<{ url: string; item: KnowledgeItem }> {
