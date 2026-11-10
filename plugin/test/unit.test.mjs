@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { parseArgs, list, truncate } from '../lib/util.mjs';
 import { globToRegExp, guardDecision, matchesGlob, overlaps, relativeToRoot } from '../lib/paths.mjs';
 import { classify, RateLimiter, SeqGate } from '../lib/monitor.mjs';
-import { decideStop } from '../lib/hooks.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { decideStop, realPath } from '../lib/hooks.mjs';
 import { scanSecrets } from '../lib/secrets.mjs';
 import { unsafeEntries, skillFolderName } from '../lib/skills.mjs';
 import { b64url, channelsFor, subprotocols } from '../lib/realtime.mjs';
@@ -149,6 +152,22 @@ test('secret scanner', () => {
   assert.ok(scanSecrets('password = "Zx9!kQ2#pL7$vR4w"').length);
   assert.equal(scanSecrets('password = ${DB_PASSWORD}').length, 0);
   assert.equal(scanSecrets('run npx nx run note:unit').length, 0);
+});
+
+test('guard paths compare equal through a symlinked folder', () => {
+  const real = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'c1-real-')));
+  const link = `${real}-link`;
+  fs.mkdirSync(path.join(real, 'repo'));
+  fs.symlinkSync(real, link);
+  try {
+    // Before the fix the guard compared these as plain text and treated the file as outside the repo.
+    assert.equal(relativeToRoot(path.join(link, 'repo', 'package.json'), path.join(real, 'repo')), null);
+    assert.equal(relativeToRoot(realPath(path.join(link, 'repo', 'package.json')), realPath(path.join(real, 'repo'))), 'package.json');
+    assert.equal(realPath(path.join(link, 'repo', 'new', 'file.ts')), path.join(real, 'repo', 'new', 'file.ts'));
+  } finally {
+    fs.unlinkSync(link);
+    fs.rmSync(real, { recursive: true, force: true });
+  }
 });
 
 test('tar entry sanitization and skill folder names', () => {

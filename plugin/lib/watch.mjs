@@ -7,8 +7,9 @@ import { syncSkills } from './skills.mjs';
 
 const WORKING = new Set(['booked', 'in_progress', 'review', 'blocked']);
 
+/** macOS notification for events that need a human. C1_NOTIFY=off silences it (the e2e suites set it). */
 export function notify(text) {
-  if (process.platform !== 'darwin') return;
+  if (process.platform !== 'darwin' || process.env.C1_NOTIFY === 'off') return;
   const safe = String(text).replace(/["\\]/g, "'").slice(0, 180);
   execFile('osascript', ['-e', `display notification "${safe}" with title "CollabOne"`], { timeout: 5000 }, () => {});
 }
@@ -70,6 +71,9 @@ export async function watch({ print = (l) => process.stdout.write(l + '\n'), Web
     gate.advance(env.seq);
     persist();
     if (env.type === 'ticket.booked' && (env.from === ctx.seatId || String(env.from).startsWith(`${ctx.seatId}/`)) && env.ticketId) ctx.myTickets.add(env.ticketId);
+    // Our own pin: take the project now. refreshMe() is async, and during a catch-up the next events (for example
+    // a review request in the new project) are classified before it returns. The hub puts the pinned project first.
+    if (env.type === 'seat.pinned' && env.from === ctx.seatId && env.projectId) ctx.projectId = env.projectId;
     const c = classify(env, ctx);
     if (['ticket.done', 'ticket.released', 'ticket.blocked'].includes(env.type) && env.ticketId) ctx.myTickets.delete(env.ticketId);
     if (env.type === 'seat.pinned' && env.from === ctx.seatId) refreshMe();

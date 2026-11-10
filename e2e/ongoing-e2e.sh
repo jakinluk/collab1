@@ -55,7 +55,7 @@ CODE="$(api POST /join-codes | json 'd["code"]')"
 expect "the Mac joins" 0 'Joined as lukasz' -- c1 join --code "$CODE" --api "$B"
 EXP="$(python3 -c "import json; print(json.load(open('$WORK/l/c1/config.json'))['expiresAt'])")"
 python3 -c "import time,sys; d=($EXP/1000-time.time())/86400; sys.exit(0 if 29 < d < 31 else 1)" && ok "agent token lives 30 days, not until an event ends" || bad "agent token lifetime" "$EXP"
-(C1_HOME="$WORK/l/c1" HOME="$WORK/l/home" C1_TOKEN_FILE=1 C1_MONITOR_MAX_PER_MIN=1000 exec "$C1" watch >"$WORK/l/watch.log" 2>&1) &
+(C1_HOME="$WORK/l/c1" HOME="$WORK/l/home" C1_TOKEN_FILE=1 C1_MONITOR_MAX_PER_MIN=1000 C1_NOTIFY=off exec "$C1" watch >"$WORK/l/watch.log" 2>&1) &
 PIDS+=($!)
 sleep 1
 

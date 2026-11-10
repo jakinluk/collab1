@@ -39,6 +39,26 @@ export function decideStop({ autopilot, myWorking = [], readyForMe = [], activeC
   return { block: true, reason };
 }
 
+/**
+ * The path with symlinks resolved, also for a file that does not exist yet (resolves its nearest existing
+ * parent). Git reports real paths (/private/var/… on macOS) while tools may pass the symlinked form (/var/…),
+ * and the two must compare equal.
+ */
+export function realPath(p) {
+  const rest = [];
+  let cur = path.resolve(p);
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync.native(cur), ...rest);
+    } catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return path.resolve(p);
+      rest.unshift(path.basename(cur));
+      cur = parent;
+    }
+  }
+}
+
 async function hubContext(timeoutMs = HOOK_TIMEOUT) {
   return clientFromConfig({ timeoutMs });
 }
@@ -238,7 +258,7 @@ export async function guard(input) {
     root = gitRoot(path.dirname(abs)) || gitRoot(cwd);
     protect = fallbackProtect();
   }
-  const rel = relativeToRoot(abs, root);
+  const rel = relativeToRoot(realPath(abs), realPath(root));
   const d = guardDecision(rel, mine, others, protect);
   if (d.action === 'block') return { code: 2, stderr: `CollabOne guard: ${d.reason}` };
   if (d.action === 'warn') return { code: 0, stdout: { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: `CollabOne guard: ${d.reason}` } } };

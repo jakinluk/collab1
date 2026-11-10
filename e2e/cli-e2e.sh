@@ -72,7 +72,7 @@ expect "doctor's hub checks pass (HTTPS + WebSocket)" 0 'PASS +HTTPS to the hub 
 expect "an agent cannot mint join codes" 0 '^403$' -- curl -s -o /dev/null -w '%{http_code}' -X POST "$A/join-codes" -H "authorization: Bearer $(cat "$WORK/ania/c1/token")"
 
 for s in ania bob; do
-  (C1_HOME="$WORK/$s/c1" HOME="$WORK/$s/home" C1_TOKEN_FILE=1 C1_MONITOR_MAX_PER_MIN=1000 exec "$C1" watch >"$WORK/$s/watch.log" 2>&1) &
+  (C1_HOME="$WORK/$s/c1" HOME="$WORK/$s/home" C1_TOKEN_FILE=1 C1_MONITOR_MAX_PER_MIN=1000 C1_NOTIFY=off exec "$C1" watch >"$WORK/$s/watch.log" 2>&1) &
   PIDS+=($!)
 done
 sleep 1
