@@ -5,3 +5,4 @@ board/config.json
 e2e/screenshots/
 backend/local-state*.json
 _to_delete/
+.omc/
